@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Bussola.Api/Bussola.Api.csproj" />
+    <Project Path="src/Bussola.Application/Bussola.Application.csproj" />
+    <Project Path="src/Bussola.Domain/Bussola.Domain.csproj" />
+    <Project Path="src/Bussola.Infrastructure/Bussola.Infrastructure.csproj" />
+  </Folder>
+</Solution>
