@@ -30,4 +30,11 @@ app.UseCors(FrontCors);
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "bussola-api" }))
    .WithName("Health");
 
+// Lista os passos de onboarding, ordenados. O AppDbContext é injetado pelo ASP.NET.
+app.MapGet("/onboarding/steps", async (AppDbContext db) =>
+    await db.OnboardingSteps
+        .OrderBy(step => step.Order)
+        .ToListAsync())
+   .WithName("GetOnboardingSteps");
+
 app.Run();
