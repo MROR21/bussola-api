@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bussola-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bussola
+      POSTGRES_PASSWORD: bussola
+      POSTGRES_DB: bussola
+    ports:
+      - "5433:5432"
+    volumes:
+      - bussola-pgdata:/var/lib/postgresql/data
+
+volumes:
+  bussola-pgdata:
