@@ -1,7 +1,14 @@
+using Bussola.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // OpenAPI (Swagger) — https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// Banco (Postgres via EF Core)
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
 // CORS liberando o front (Vite dev)
 const string FrontCors = "front";
