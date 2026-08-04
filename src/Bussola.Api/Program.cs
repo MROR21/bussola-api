@@ -3,8 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// OpenAPI (Swagger) — https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// Swagger — documentação interativa da API
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // Banco (Postgres via EF Core)
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -22,7 +23,8 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseCors(FrontCors);
