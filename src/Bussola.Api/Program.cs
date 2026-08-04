@@ -21,6 +21,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Ao iniciar: aplica migrations pendentes e semeia os dados iniciais (dev).
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    await OnboardingSeeder.SeedAsync(db);
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
