@@ -8,5 +8,6 @@ public class OnboardingStep
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool IsCompanySpecific { get; set; }
-    public string? SkillTag { get; set; }
+    // Área que o passo cobre (só faz sentido em passo genérico). None = não-nivelável / sempre essencial.
+    public SkillArea SkillArea { get; set; } = SkillArea.None;
 }

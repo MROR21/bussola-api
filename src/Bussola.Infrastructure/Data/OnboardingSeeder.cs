@@ -19,17 +19,17 @@ public static class OnboardingSeeder
 
             // Fase B — Ambiente técnico
             new OnboardingStep { Order = 4, Phase = "Ambiente técnico", Title = "Entenda os repositórios", Description = "agilean_portal (front), api (back), projects/contract (submódulos) e como se conectam.", IsCompanySpecific = true },
-            new OnboardingStep { Order = 5, Phase = "Ambiente técnico", Title = "Clone os repositórios", Description = "git clone --recurse-submodules dos repos do seu squad.", IsCompanySpecific = false, SkillTag = "git" },
-            new OnboardingStep { Order = 6, Phase = "Ambiente técnico", Title = "Suba o ambiente", Description = "Instale as dependências e rode o front (Vite) e o back (dotnet).", IsCompanySpecific = false, SkillTag = "setup" },
+            new OnboardingStep { Order = 5, Phase = "Ambiente técnico", Title = "Clone os repositórios", Description = "git clone --recurse-submodules dos repos do seu squad.", IsCompanySpecific = false, SkillArea = SkillArea.Git },
+            new OnboardingStep { Order = 6, Phase = "Ambiente técnico", Title = "Suba o ambiente", Description = "Instale as dependências e rode o front (Vite) e o back (dotnet).", IsCompanySpecific = false },
 
             // Fase C — Padrões
             new OnboardingStep { Order = 7, Phase = "Padrões", Title = "Padrões de código", Description = "CLAUDE.md: tokens ads-*, data-cy, sem CSS custom, máx 400 linhas, reusar o Design System.", IsCompanySpecific = true },
-            new OnboardingStep { Order = 8, Phase = "Padrões", Title = "Fluxo git multi-repo", Description = "Branch por card → rebase no support → bump do submódulo no api → force-with-lease.", IsCompanySpecific = true, SkillTag = "git" },
+            new OnboardingStep { Order = 8, Phase = "Padrões", Title = "Fluxo git multi-repo", Description = "Branch por card → rebase no support → bump do submódulo no api → force-with-lease.", IsCompanySpecific = true, SkillArea = SkillArea.Git },
             new OnboardingStep { Order = 9, Phase = "Padrões", Title = "Jira & Bitbucket na prática", Description = "Pegar card, transições, abrir PR, review e reviewer.", IsCompanySpecific = true },
 
             // Fase D — Primeiro Card
             new OnboardingStep { Order = 10, Phase = "Primeiro Card", Title = "Pegue um card starter", Description = "Um good-first-issue simples (ex.: tirar a tag de beta de funcionalidades que não são mais beta).", IsCompanySpecific = true },
-            new OnboardingStep { Order = 11, Phase = "Primeiro Card", Title = "Crie a branch", Description = "fix/MDO-X-support a partir do support.", IsCompanySpecific = false, SkillTag = "git" },
+            new OnboardingStep { Order = 11, Phase = "Primeiro Card", Title = "Crie a branch", Description = "fix/MDO-X-support a partir do support.", IsCompanySpecific = false, SkillArea = SkillArea.Git },
             new OnboardingStep { Order = 12, Phase = "Primeiro Card", Title = "Implemente seguindo os padrões", Description = "Front e/ou back, respeitando o CLAUDE.md.", IsCompanySpecific = false },
             new OnboardingStep { Order = 13, Phase = "Primeiro Card", Title = "Rode o gate", Description = "npm run lint --max-warnings=0 + build.", IsCompanySpecific = true },
             new OnboardingStep { Order = 14, Phase = "Primeiro Card", Title = "Abra o PR", Description = "Título, descrição e o reviewer da semana.", IsCompanySpecific = true },
