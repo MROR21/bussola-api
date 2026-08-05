@@ -1,3 +1,4 @@
+using Bussola.Domain.Nivelamento;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,10 @@ builder.Services.AddSwaggerGen();
 // Banco (Postgres via EF Core)
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+
+// Serializa enums como texto no JSON (ex.: "Git" em vez de 3) — deixa a API auto-documentada.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 // CORS liberando o front (Vite dev)
 const string FrontCors = "front";
@@ -46,5 +51,27 @@ app.MapGet("/onboarding/steps", async (AppDbContext db) =>
         .OrderBy(step => step.Order)
         .ToListAsync())
    .WithName("GetOnboardingSteps");
+
+// Monta a trilha para um perfil: cada passo com a profundidade recomendada (essencial/resumo).
+// Stateless — o perfil vem no corpo, nada é salvo (persistir vem quando existir Usuário).
+app.MapPost("/onboarding/trail", async (Perfil perfil, AppDbContext db) =>
+{
+    var steps = await db.OnboardingSteps.OrderBy(step => step.Order).ToListAsync();
+
+    var trail = steps.Select(step => new
+    {
+        step.Id,
+        step.Order,
+        step.Phase,
+        step.Title,
+        step.Description,
+        step.IsCompanySpecific,
+        step.SkillArea,
+        RecommendedDepth = TrailPlanner.DepthFor(step, perfil),
+    });
+
+    return Results.Ok(trail);
+})
+   .WithName("GetOnboardingTrail");
 
 app.Run();
