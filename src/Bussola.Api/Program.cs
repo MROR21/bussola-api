@@ -133,11 +133,31 @@ app.MapPut("/users/{id:guid}/perfil", async (Guid id, Perfil perfil, AppDbContex
     usuario.Git = perfil.Git;
     usuario.Sql = perfil.Sql;
     usuario.Jira = perfil.Jira;
+    usuario.NivelamentoConcluido = true;
     await db.SaveChangesAsync();
 
     return Results.NoContent();
 })
    .WithName("SalvarPerfil");
+
+// Dados do usuário: perfil salvo + se já nivelou. O front usa no login pra decidir se pula o
+// questionário e monta a trilha direto.
+app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    return Results.Ok(new
+    {
+        usuario.Id,
+        usuario.Nome,
+        Email = usuario.Email.Value,
+        usuario.Cargo,
+        usuario.NivelamentoConcluido,
+        perfil = usuario.ToPerfil(),
+    });
+})
+   .WithName("GetUsuario");
 
 // Lista os ids dos passos que o usuário já concluiu.
 app.MapGet("/users/{id:guid}/progress", async (Guid id, AppDbContext db) =>

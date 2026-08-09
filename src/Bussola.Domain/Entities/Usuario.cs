@@ -20,6 +20,10 @@ public class Usuario
     public SkillLevel Sql { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Jira { get; set; } = SkillLevel.Nenhum;
 
+    // True depois que o usuário responde (ou pula) o nivelamento. Distingue "respondeu tudo Nenhum"
+    // de "ainda não respondeu" — o front usa pra pular o questionário e ir direto pra trilha.
+    public bool NivelamentoConcluido { get; set; }
+
     public List<PassoConcluido> PassosConcluidos { get; set; } = [];
 
     // Monta o record Perfil (value object usado pelo TrailPlanner) a partir das colunas.
