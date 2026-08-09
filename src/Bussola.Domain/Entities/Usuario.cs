@@ -1,0 +1,24 @@
+using Bussola.Domain.Nivelamento;
+
+namespace Bussola.Domain.Entities;
+
+// Usuário do onboarding. Guarda o Perfil (respostas do nivelamento) e a lista de passos concluídos.
+public class Usuario
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+
+    // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
+    public Cargo Cargo { get; set; } = Cargo.Estagiario;
+    public SkillLevel Frontend { get; set; } = SkillLevel.Nenhum;
+    public SkillLevel Backend { get; set; } = SkillLevel.Nenhum;
+    public SkillLevel Git { get; set; } = SkillLevel.Nenhum;
+    public SkillLevel Sql { get; set; } = SkillLevel.Nenhum;
+    public SkillLevel Jira { get; set; } = SkillLevel.Nenhum;
+
+    public List<PassoConcluido> PassosConcluidos { get; set; } = [];
+
+    // Monta o record Perfil (value object usado pelo TrailPlanner) a partir das colunas.
+    public Perfil ToPerfil() => new(Cargo, Frontend, Backend, Git, Sql, Jira);
+}
