@@ -24,7 +24,7 @@ public class TokenService(IConfiguration config)
         Claim[] claims =
         [
             new(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
-            new(JwtRegisteredClaimNames.Email, usuario.Email),
+            new(JwtRegisteredClaimNames.Email, usuario.Email.Value),
             new("nome", usuario.Nome),
         ];
 

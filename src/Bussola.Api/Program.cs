@@ -1,6 +1,7 @@
 using Bussola.Api.Auth;
 using Bussola.Domain.Entities;
 using Bussola.Domain.Nivelamento;
+using Bussola.Domain.ValueObjects;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -84,10 +85,16 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, AppDbContext db) =>
 // Login demo: get-or-create por email + emite JWT (token com expiração).
 app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenService tokens) =>
 {
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == req.Email);
+    // O Value Object valida o email: se não passar, nem chega no banco.
+    if (!Email.TryCreate(req.Email, out var email))
+    {
+        return Results.BadRequest(new { erro = "Email inválido." });
+    }
+
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
     if (usuario is null)
     {
-        usuario = new Usuario { Nome = req.Nome, Email = req.Email };
+        usuario = new Usuario { Nome = req.Nome, Email = email! };
         db.Usuarios.Add(usuario);
         await db.SaveChangesAsync();
     }
@@ -97,7 +104,7 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, usuario.Email, usuario.Cargo },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo },
     });
 })
    .WithName("Login");

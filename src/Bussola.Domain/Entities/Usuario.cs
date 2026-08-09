@@ -1,4 +1,5 @@
 using Bussola.Domain.Nivelamento;
+using Bussola.Domain.ValueObjects;
 
 namespace Bussola.Domain.Entities;
 
@@ -7,7 +8,9 @@ public class Usuario
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Nome { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
+
+    // Email é um Value Object: required força setar na criação (nunca fica num estado inválido).
+    public required Email Email { get; set; }
 
     // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
     public Cargo Cargo { get; set; } = Cargo.Estagiario;
