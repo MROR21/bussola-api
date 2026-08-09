@@ -85,12 +85,23 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, AppDbContext db) =>
         step.Description,
         step.IsCompanySpecific,
         step.SkillArea,
+        step.Conteudo,
         RecommendedDepth = TrailPlanner.DepthFor(step, perfil),
     });
 
     return Results.Ok(trail);
 })
    .WithName("GetOnboardingTrail");
+
+// Um passo específico (com o conteúdo em Markdown). Usado na página de detalhe do passo.
+app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var step = await db.OnboardingSteps.FindAsync(id);
+    return step is null
+        ? Results.NotFound(new { erro = "Passo não encontrado." })
+        : Results.Ok(step);
+})
+   .WithName("GetOnboardingStep");
 
 // --- Auth + Usuário + Progresso ---
 

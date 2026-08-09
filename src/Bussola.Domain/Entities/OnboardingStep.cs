@@ -10,4 +10,7 @@ public class OnboardingStep
     public bool IsCompanySpecific { get; set; }
     // Área que o passo cobre (só faz sentido em passo genérico). None = não-nivelável / sempre essencial.
     public SkillArea SkillArea { get; set; } = SkillArea.None;
+
+    // Conteúdo completo do passo, em Markdown (a "aula"). O Description é o resumo de uma linha.
+    public string Conteudo { get; set; } = string.Empty;
 }
