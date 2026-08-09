@@ -3,6 +3,7 @@ using Bussola.Domain.Entities;
 using Bussola.Domain.Nivelamento;
 using Bussola.Domain.ValueObjects;
 using Bussola.Infrastructure.Data;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -39,6 +40,17 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await OnboardingSeeder.SeedAsync(db);
 }
+
+// Rede de segurança: qualquer exceção não-tratada vira um 500 { erro } limpo (sem stack pro
+// cliente). Em dev, inclui a mensagem real pra facilitar o debug; em prod, mensagem genérica.
+app.UseExceptionHandler(handler =>
+    handler.Run(async context =>
+    {
+        var falha = context.Features.Get<IExceptionHandlerFeature>();
+        var detalhe = app.Environment.IsDevelopment() ? falha?.Error.Message : null;
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(new { erro = detalhe ?? "Erro interno no servidor." });
+    }));
 
 if (app.Environment.IsDevelopment())
 {
@@ -113,7 +125,7 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
 app.MapPut("/users/{id:guid}/perfil", async (Guid id, Perfil perfil, AppDbContext db) =>
 {
     var usuario = await db.Usuarios.FindAsync(id);
-    if (usuario is null) return Results.NotFound();
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
     usuario.Cargo = perfil.Cargo;
     usuario.Frontend = perfil.Frontend;
