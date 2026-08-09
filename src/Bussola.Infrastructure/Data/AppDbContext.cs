@@ -9,6 +9,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<OnboardingStep> OnboardingSteps => Set<OnboardingStep>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<PassoConcluido> PassosConcluidos => Set<PassoConcluido>();
+    public DbSet<Fluxo> Fluxos => Set<Fluxo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

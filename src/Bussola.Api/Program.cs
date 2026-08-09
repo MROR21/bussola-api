@@ -39,6 +39,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     await OnboardingSeeder.SeedAsync(db);
+    await FluxoSeeder.SeedAsync(db);
 }
 
 // Rede de segurança: qualquer exceção não-tratada vira um 500 { erro } limpo (sem stack pro
@@ -102,6 +103,23 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
         : Results.Ok(step);
 })
    .WithName("GetOnboardingStep");
+
+// --- Fluxos (Referência viva) ---
+
+// Lista todos os fluxos, ordenados. A busca é feita no front (poucos itens).
+app.MapGet("/fluxos", async (AppDbContext db) =>
+    await db.Fluxos.OrderBy(fluxo => fluxo.Order).ToListAsync())
+   .WithName("GetFluxos");
+
+// Um fluxo específico (com o conteúdo em Markdown).
+app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var fluxo = await db.Fluxos.FindAsync(id);
+    return fluxo is null
+        ? Results.NotFound(new { erro = "Fluxo não encontrado." })
+        : Results.Ok(fluxo);
+})
+   .WithName("GetFluxo");
 
 // --- Auth + Usuário + Progresso ---
 
