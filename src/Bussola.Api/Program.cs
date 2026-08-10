@@ -149,6 +149,100 @@ app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
 })
    .WithName("GetFluxo");
 
+// Fluxos visíveis do usuário logado: do squad dele + os sem squad (Básico) + os atribuídos pelo gestor.
+app.MapGet("/fluxos/meus", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(userId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    var atribuidos = (await db.FluxosAtribuidos
+        .Where(a => a.UsuarioId == userId)
+        .Select(a => a.FluxoId)
+        .ToListAsync()).ToHashSet();
+
+    var todos = await db.Fluxos.OrderBy(f => f.Order).ToListAsync();
+    var visiveis = todos.Where(f => f.Squad == null || f.Squad == usuario.Squad || atribuidos.Contains(f.Id));
+
+    return Results.Ok(visiveis);
+})
+   .WithName("GetMeusFluxos")
+   .RequireAuthorization();
+
+// Ids dos fluxos que o usuário logado já concluiu.
+app.MapGet("/fluxos/concluidos", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var ids = await db.FluxosConcluidos
+        .Where(f => f.UsuarioId == userId)
+        .Select(f => f.FluxoId)
+        .ToListAsync();
+    return Results.Ok(ids);
+})
+   .WithName("GetFluxosConcluidos")
+   .RequireAuthorization();
+
+// Marca um fluxo como concluído (idempotente) + notifica o gestor, se houver.
+app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var ja = await db.FluxosConcluidos.AnyAsync(f => f.UsuarioId == userId && f.FluxoId == fluxoId);
+    if (!ja)
+    {
+        db.FluxosConcluidos.Add(new FluxoConcluido { UsuarioId = userId, FluxoId = fluxoId });
+
+        var usuario = await db.Usuarios.FindAsync(userId);
+        if (usuario?.GestorId is Guid gestorId)
+        {
+            var fluxo = await db.Fluxos.FindAsync(fluxoId);
+            db.Notificacoes.Add(new Notificacao
+            {
+                UsuarioId = gestorId,
+                Mensagem = $"{usuario.Nome} concluiu o fluxo: {fluxo?.Titulo ?? "um fluxo"}.",
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("ConcluirFluxo")
+   .RequireAuthorization();
+
+// Desmarca um fluxo concluído.
+app.MapDelete("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var registro = await db.FluxosConcluidos
+        .FirstOrDefaultAsync(f => f.UsuarioId == userId && f.FluxoId == fluxoId);
+    if (registro is not null)
+    {
+        db.FluxosConcluidos.Remove(registro);
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("DesmarcarFluxo")
+   .RequireAuthorization();
+
 // --- Gestor (protegido pela policy "Gestor") ---
 
 // Lista os SUPERVISIONADOS do gestor logado, com o progresso de cada um.
@@ -177,6 +271,7 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
         u.Nome,
         Email = u.Email.Value,
         u.Cargo,
+        u.Squad,
         u.IsGestor,
         u.NivelamentoConcluido,
         PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0),
@@ -220,6 +315,35 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
     return Results.Ok(new { alvo.Nome, Passos = passos });
 })
    .WithName("GetProgressoSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Fluxos que o supervisionado vê (squad + Básico + atribuídos), com a flag de concluído.
+app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var atribuidos = (await db.FluxosAtribuidos
+        .Where(a => a.UsuarioId == usuarioId).Select(a => a.FluxoId).ToListAsync()).ToHashSet();
+    var concluidos = (await db.FluxosConcluidos
+        .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
+
+    var todos = await db.Fluxos.OrderBy(f => f.Order).ToListAsync();
+    var visiveis = todos
+        .Where(f => f.Squad == null || f.Squad == alvo.Squad || atribuidos.Contains(f.Id))
+        .Select(f => new { f.Id, f.Titulo, f.Modulo, Concluido = concluidos.Contains(f.Id) });
+
+    return Results.Ok(visiveis);
+})
+   .WithName("GetFluxosSupervisionado")
    .RequireAuthorization("Gestor");
 
 // Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
@@ -278,6 +402,61 @@ app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId,
     return Results.NoContent();
 })
    .WithName("RemoveSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Atribuições de fluxo dos supervisionados do gestor (qual supervisionado tem qual fluxo).
+app.MapGet("/gestor/fluxos/atribuicoes", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var supervisionados = await db.Usuarios.Where(u => u.GestorId == gestorId).ToListAsync();
+    var nomePorId = supervisionados.ToDictionary(u => u.Id, u => u.Nome);
+    var ids = nomePorId.Keys.ToList();
+
+    var atribuicoes = await db.FluxosAtribuidos.Where(a => ids.Contains(a.UsuarioId)).ToListAsync();
+    var resultado = atribuicoes.Select(a => new { a.FluxoId, a.UsuarioId, Nome = nomePorId[a.UsuarioId] });
+
+    return Results.Ok(resultado);
+})
+   .WithName("GetAtribuicoes")
+   .RequireAuthorization("Gestor");
+
+// Atribui (libera) um fluxo a um supervisionado do gestor. Idempotente + notifica o supervisionado.
+app.MapPost("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Guid fluxoId, Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var fluxo = await db.Fluxos.FindAsync(fluxoId);
+    if (fluxo is null) return Results.NotFound(new { erro = "Fluxo não encontrado." });
+
+    var jaTem = await db.FluxosAtribuidos.AnyAsync(a => a.FluxoId == fluxoId && a.UsuarioId == usuarioId);
+    if (!jaTem)
+    {
+        db.FluxosAtribuidos.Add(new FluxoAtribuido { FluxoId = fluxoId, UsuarioId = usuarioId });
+        db.Notificacoes.Add(new Notificacao
+        {
+            UsuarioId = usuarioId,
+            Mensagem = $"Seu gestor liberou o fluxo: {fluxo.Titulo}.",
+            Link = $"/fluxos?destaque={fluxoId}",
+        });
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("AtribuirFluxo")
    .RequireAuthorization("Gestor");
 
 // --- Notificações (do usuário logado, lido do token) ---

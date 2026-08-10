@@ -3,6 +3,7 @@ using System;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bussola.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810040737_AddFluxoAtribuido")]
+    partial class AddFluxoAtribuido
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -86,29 +89,6 @@ namespace Bussola.Infrastructure.Migrations
                     b.ToTable("FluxosAtribuidos");
                 });
 
-            modelBuilder.Entity("Bussola.Domain.Entities.FluxoConcluido", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("ConcluidoEm")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("FluxoId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UsuarioId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UsuarioId", "FluxoId")
-                        .IsUnique();
-
-                    b.ToTable("FluxosConcluidos");
-                });
-
             modelBuilder.Entity("Bussola.Domain.Entities.Notificacao", b =>
                 {
                     b.Property<Guid>("Id")
@@ -120,10 +100,6 @@ namespace Bussola.Infrastructure.Migrations
 
                     b.Property<bool>("Lida")
                         .HasColumnType("boolean");
-
-                    b.Property<string>("Link")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<string>("Mensagem")
                         .IsRequired()

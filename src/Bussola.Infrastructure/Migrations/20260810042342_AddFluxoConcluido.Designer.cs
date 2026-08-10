@@ -3,6 +3,7 @@ using System;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bussola.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810042342_AddFluxoConcluido")]
+    partial class AddFluxoConcluido
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -120,10 +123,6 @@ namespace Bussola.Infrastructure.Migrations
 
                     b.Property<bool>("Lida")
                         .HasColumnType("boolean");
-
-                    b.Property<string>("Link")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<string>("Mensagem")
                         .IsRequired()
