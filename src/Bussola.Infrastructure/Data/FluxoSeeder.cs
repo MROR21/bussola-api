@@ -5,12 +5,18 @@ using Microsoft.EntityFrameworkCore;
 namespace Bussola.Infrastructure.Data;
 
 // Semeia os fluxos da "Referência viva", organizados em módulos (por squad + básico do dev).
-// Idempotente + faz upgrade: se a tabela já tem os antigos (sem módulo), preenche o módulo e
-// insere os fluxos que faltam (por título). Fluxos são 100% conteúdo semeado (sem dado de usuário).
+// Idempotente + faz upgrade: preenche módulo/squad dos antigos, faz backfill do conteúdo curado
+// nos fluxos que ainda estão em stub, e insere os fluxos que faltam (por título).
+// Fluxos são 100% conteúdo semeado (sem dado de usuário).
 public static class FluxoSeeder
 {
     private const string ModuloMdO = "Mão de Obra";
+    private const string ModuloQQ = "Quiz Quality";
+    private const string ModuloAgilean = "Agilean (desktop)";
     private const string ModuloBasico = "Básico do dev";
+
+    // Marca o conteúdo ainda-não-curado; usado pra detectar (e substituir) stubs no backfill.
+    private const string MarcadorStub = "Conteúdo a curar";
 
     public static async Task SeedAsync(AppDbContext db)
     {
@@ -40,6 +46,21 @@ public static class FluxoSeeder
             alterou = true;
         }
 
+        // Backfill de conteúdo: fluxos vazios ou ainda no stub recebem o conteúdo curado (por título).
+        // Só sobrescreve stub/vazio — não encosta em conteúdo já editado à mão.
+        var curadoPorTitulo = todos.ToDictionary(f => f.Titulo, f => f.Conteudo);
+        foreach (var fluxo in existentes)
+        {
+            var precisa = string.IsNullOrWhiteSpace(fluxo.Conteudo) || fluxo.Conteudo.Contains(MarcadorStub);
+            if (precisa
+                && curadoPorTitulo.TryGetValue(fluxo.Titulo, out var conteudo)
+                && !conteudo.Contains(MarcadorStub))
+            {
+                fluxo.Conteudo = conteudo;
+                alterou = true;
+            }
+        }
+
         // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
         var titulos = existentes.Select(f => f.Titulo).ToHashSet();
         var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
@@ -55,10 +76,10 @@ public static class FluxoSeeder
         }
     }
 
-    // Stub de conteúdo pros fluxos do sistema que ainda serão curados (com o vídeo real).
+    // Fallback pros fluxos de sistema que ainda não têm conteúdo curado no dicionário.
     private static string StubSistema(string titulo) => $"""
         ## {titulo}
-        _(Conteúdo a curar — aqui entra o passo a passo da tela, com o vídeo do sistema acima.)_
+        _({MarcadorStub} — aqui entra o passo a passo da tela, com o vídeo do sistema acima.)_
         """;
 
     private static List<Fluxo> Definicoes()
@@ -81,13 +102,13 @@ public static class FluxoSeeder
                 ("Custos e relatórios", "Ler os custos consolidados da obra."),
                 ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário."),
             }),
-            ("Quiz Quality", Squad.QuizQuality, new (string, string)[]
+            (ModuloQQ, Squad.QuizQuality, new (string, string)[]
             {
                 ("Visão geral do Quiz Quality", "O que o squad de qualidade/inspeção faz."),
                 ("Inspeções", "Como criar e conduzir uma inspeção."),
                 ("Relatórios de qualidade", "Ler e exportar os relatórios de qualidade."),
             }),
-            ("Agilean (desktop)", Squad.Agilean, new (string, string)[]
+            (ModuloAgilean, Squad.Agilean, new (string, string)[]
             {
                 ("Visão geral do Agilean", "O aplicativo de planejamento da obra."),
                 ("Planejamento", "Montar o planejamento no desktop."),
@@ -109,7 +130,7 @@ public static class FluxoSeeder
                     Categoria = "Sistema",
                     Titulo = titulo,
                     Descricao = descricao,
-                    Conteudo = StubSistema(titulo),
+                    Conteudo = Conteudos.GetValueOrDefault(titulo, StubSistema(titulo)),
                     VideoUrl = string.Empty,
                 });
             }
@@ -118,6 +139,341 @@ public static class FluxoSeeder
         lista.AddRange(BasicoDoDev(ref ordem));
         return lista;
     }
+
+    // Conteúdo (Markdown) curado dos fluxos de sistema, por título.
+    // MdO: referência de verdade (o que a tela faz, conceitos-chave, pegadinhas reais dos cards).
+    // QQ / Agilean: visão geral honesta — detalhe de tela a completar por alguém do squad.
+    private static readonly Dictionary<string, string> Conteudos = new()
+    {
+        // ── Mão de Obra ─────────────────────────────────────────────────────────────
+        ["Visão geral da Mão de Obra"] = """
+        ## Visão geral da Mão de Obra
+        O módulo de **Mão de Obra (MdO)** controla o **custo de pessoas** numa obra: quanto cada
+        funcionário recebe, como esse valor se distribui entre as frentes de serviço, e como isso
+        se compara ao que foi orçado.
+
+        ## As três pontas
+        - **Orçamento** — o quanto está previsto gastar com mão de obra (por serviço/pacote).
+        - **Alocação** — como a equipe real é distribuída nas frentes (com pesos).
+        - **Folha** — o pagamento efetivo do período, que consome o orçado.
+
+        > **Ideia central:** cada real pago a um funcionário precisa "cair" em algum lugar do
+        > orçamento. A MdO é o que amarra *pessoa → serviço → custo*.
+
+        Comece pela **Folha** (o dia a dia) e depois entenda **Alocação** e **Orçamento**, que
+        alimentam os valores sugeridos.
+        """,
+        ["Folha de pagamento — visão geral"] = """
+        ## Folha de pagamento — visão geral
+        A **folha** agrupa os pagamentos de mão de obra de um **período** (competência). Lista os
+        funcionários, o quanto cada um tem **a pagar** e o quanto já foi **pago/retirado**.
+
+        ## Status da folha (importa muito)
+        - **Aberta** — pode editar valores, ajustar alocações, resolver pendências.
+        - **Em aprovação** / **Aprovada** — **bloqueada** para edição. A regra é: só é editável
+          enquanto está *aberta* (`IsOpen`).
+
+        ## Conceitos que voltam sempre
+        - **A pagar** = o que ainda falta pagar no período.
+        - **Retirada / pagamento** = o que já saiu; o **saldo** nasce da diferença.
+        - **Pendências** = itens que precisam de ação antes de fechar (ver o fluxo de pendências).
+
+        A folha é a porta de entrada do módulo — ajuste, sugerido, pendências e devolução acontecem
+        todos a partir dela.
+        """,
+        ["Detalhe e ajuste da folha"] = """
+        ## Detalhe e ajuste da folha
+        Ao abrir uma folha, o **detalhe** mostra cada funcionário e seus valores. O **ajuste** é
+        onde você corrige quanto cada um recebe.
+
+        ## Sugerido vs. manual
+        - O sistema calcula um **valor sugerido** por funcionário (a partir da alocação e do saldo).
+        - Você pode **aplicar o sugerido** (individual ou em massa) ou digitar um **valor manual**.
+        - Aplicar sugerido só faz sentido quando o **sugerido é > 0**.
+
+        ## Pegadinhas reais
+        - O ajuste só é possível com a folha **aberta**; em aprovação/aprovada fica só leitura.
+        - Valores digitados **não podem vazar entre funcionários/alocações** — cada linha é
+          independente (já foi uma classe de bug aqui).
+        - Ao ocultar quem tem saldo zero, o cálculo deve **netar pagamento e retirada**, não olhar
+          só o pagamento.
+
+        O ajuste é o coração da folha — é aqui que o valor final de cada pessoa é definido.
+        """,
+        ["Alocação de equipe"] = """
+        ## Alocação de equipe
+        A **alocação** distribui os funcionários de uma equipe entre as frentes de serviço, usando
+        **pesos**. O peso define que fatia do custo cai em cada funcionário/serviço.
+
+        ## Dois modos de peso
+        - **Por salário** — o peso sai do salário de cada um (proporcional).
+        - **Manual** — você define o peso na mão.
+
+        > **Regra importante:** se um funcionário **não tem salário** cadastrado, o modo *por
+        > salário* não fecha — a alocação **cai automaticamente para peso manual** e o salvamento
+        > fica bloqueado até os pesos serem válidos.
+
+        ## Fluxo típico
+        1. Escolha a equipe.
+        2. Defina o modo de peso (salário ou manual).
+        3. Ajuste os pesos até bater o total.
+        4. Salve — a alocação vira base do **sugerido** na folha.
+
+        Alocação bem-feita = sugerido correto na folha. As duas coisas andam juntas.
+        """,
+        ["Adicionar e incluir alocações"] = """
+        ## Adicionar e incluir alocações
+        Além de editar uma alocação existente, você pode **incluir novas alocações** e **adicionar
+        funcionários** a uma equipe que já existe.
+
+        ## Duas ações parecidas, mas diferentes
+        - **Adicionar funcionário** a uma alocação — entra mais uma pessoa; os pesos se rebalanceiam.
+        - **Incluir alocação** — cria uma nova distribuição (ex.: outra frente/serviço).
+
+        ## Pegadinhas
+        - Ao adicionar um funcionário **sem salário**, o modo cai para **manual** (mesmo gating da
+          alocação normal).
+        - O **sugerido** aqui é calculado **por funcionário**, não no agregado — senão o excesso de
+          um sobre-pago "come" o avanço de outro.
+        - Dá pra adicionar funcionário a uma alocação de criação que **já tem equipe**.
+
+        Use quando a equipe real mudou: alguém entrou, ou surgiu uma frente nova no período.
+        """,
+        ["Orçamento de mão de obra"] = """
+        ## Orçamento de mão de obra
+        O **orçamento de MdO** é o quanto está **previsto** gastar com pessoas na obra, organizado
+        por serviço/pacote. É o alvo contra o qual a folha (o gasto real) é comparada.
+
+        ## Como se monta
+        - Cada **serviço** tem um custo de mão de obra previsto.
+        - Serviços podem ser agrupados em **pacotes de trabalho**.
+        - Há também as **despesas indiretas** (o que não é mão de obra direta de um serviço).
+
+        ## Orçamento manual vs. calculado
+        - Parte pode vir calculada; parte pode ser **manual** (você digita o previsto).
+        - Em orçamento manual, as **despesas indiretas** também entram — e precisam aparecer no
+          consolidado, sem "sumir".
+
+        O orçamento é a régua: sem ele, "gastou muito ou pouco?" não tem resposta. A folha preenche
+        o realizado; o orçamento diz o esperado.
+        """,
+        ["Despesas indiretas"] = """
+        ## Despesas indiretas
+        **Despesas indiretas** são custos de mão de obra que **não pertencem diretamente a um
+        serviço** — apoio, encargos, estrutura. Entram no orçamento por fora dos serviços diretos,
+        mas contam no **custo total**.
+
+        ## Onde aparecem
+        - No **orçamento** (inclusive no manual), como um item próprio.
+        - No **consolidado de custos**, somando ao total da obra.
+
+        ## Pegadinhas
+        - Em orçamento manual, a despesa indireta precisa **entrar de fato** no cálculo — já houve
+          bug de ela ficar de fora.
+        - No item sintético (o agrupador) não pode aparecer **traço solto / valor órfão** — o
+          agregado tem que fechar com os filhos.
+
+        Pense nelas como o "custo de estar na obra" que não cabe em nenhum serviço específico, mas
+        que alguém paga.
+        """,
+        ["Pacotes de trabalho"] = """
+        ## Pacotes de trabalho
+        Um **pacote de trabalho** agrupa vários serviços numa unidade só — pra orçar, alocar e
+        acompanhar o custo de forma consolidada, em vez de serviço a serviço.
+
+        ## Pra que serve
+        - **Organizar** frentes que andam juntas (ex.: tudo de uma etapa da obra).
+        - **Consolidar** custo e avanço no nível do pacote.
+        - Servir de base pra ações em lote (as mesmas da folha).
+
+        ## Pegadinhas
+        - Ações que existem na folha (como **devolver valor a pagar**) também aparecem em pacotes e
+          seguem as **mesmas regras de elegibilidade** — o botão desabilita quando não se aplica,
+          com o motivo nas exceções.
+        - Um pacote com itens crus precisa de **guarda** pra não contar valor de funcionário oculto
+          no dashboard.
+
+        Pacote = a "pasta" que junta serviços afins pra você raciocinar por etapa, não por item solto.
+        """,
+        ["Resolver pendências"] = """
+        ## Resolver pendências
+        **Pendências** são itens de uma folha/alocação que precisam de ação antes de fechar o
+        período — funcionário com valor a definir, retirada sem contrapartida, ou distribuição que
+        não fechou.
+
+        ## O que costuma pendenciar
+        - Funcionário com **retirada anterior** mas **sem "a pagar"** definido.
+        - Distribuição/peso que não somou o total.
+        - Valores que precisam de aplicação do sugerido ou de ajuste manual.
+
+        ## No modal de pendências
+        - Cada linha traz o funcionário e o que falta.
+        - Você resolve aplicando sugerido, ajustando valor, ou tratando a exceção.
+
+        > **Do lado do usuário:** se resolver "todas de uma vez" travar a tela, é bug (já houve um
+        > loop de re-render), não uso errado.
+
+        Zerar as pendências é o pré-requisito pra fechar/aprovar a folha com segurança.
+        """,
+        ["Distribuição automática"] = """
+        ## Distribuição automática
+        A **distribuição automática** espalha um valor pela equipe de uma vez, em vez de você digitar
+        funcionário por funcionário. É atalho pra alocar/pagar rápido respeitando os pesos.
+
+        ## Como funciona
+        - Você define o total (ou usa o sugerido) e o sistema **reparte** pela equipe.
+        - A repartição respeita os **pesos** da alocação (salário ou manual).
+        - Há opção de **mínimo permitido por %** — um piso pra ninguém ficar abaixo de certa fatia.
+
+        ## Pegadinhas
+        - O **mínimo por %** não pode ser reaplicado cegamente "em todo mundo" — quem tem bloqueio
+          não deve ser empurrado pro mesmo % de quem está livre.
+        - O sugerido que alimenta a distribuição precisa ser o **correto por funcionário**.
+
+        Use quando quer velocidade e a regra de peso já está certa — a automática só é tão boa quanto
+        a alocação por trás dela.
+        """,
+        ["Devolver valor a pagar"] = """
+        ## Devolver valor a pagar
+        **Devolver valor a pagar** retorna um valor que estava marcado a pagar para um funcionário —
+        por correção, ou porque o pagamento não vai acontecer naquele período.
+
+        ## Elegibilidade (o ponto central)
+        - O botão só deve agir quando o funcionário/valor **é elegível** à devolução.
+        - Quando **não** é elegível, o botão fica **desabilitado**, e um **modal de exceções**
+          explica *por que* aqueles itens não podem ser devolvidos.
+        - A mesma regra vale nas telas de **pacotes**, não só na folha.
+
+        ## Fluxo
+        1. Selecione o(s) funcionário(s).
+        2. Se elegível, confirme a devolução; senão, o modal lista as exceções.
+        3. O valor volta pra "a pagar" / sai do pago, conforme o caso.
+
+        > **Regra de ouro:** checar elegibilidade **antes** de habilitar. Botão que age sem checar é
+        > fonte de erro.
+        """,
+        ["Custos e relatórios"] = """
+        ## Custos e relatórios
+        A visão de **custos** consolida quanto a obra gastou com mão de obra e compara com o orçado.
+        É onde o gestor lê o "placar" do período.
+
+        ## O que você lê aqui
+        - **Realizado** (o que a folha efetivou) vs. **orçado** (a previsão).
+        - Custo por **serviço**, por **pacote**, e com as **despesas indiretas** somadas.
+        - Consolidado da obra inteira.
+
+        ## Pegadinhas
+        - Um **funcionário oculto** (saldo zerado) **não pode** contaminar o total — nem via
+          alocação, nem via pacote com itens crus.
+        - Tabelas grandes precisam de **virtualização** — sem isso a tela trava.
+
+        É a foto final: se orçamento é o alvo e a folha é o tiro, os relatórios mostram o quão perto
+        você acertou.
+        """,
+        ["Ocultar e exibir funcionário"] = """
+        ## Ocultar e exibir funcionário
+        **Ocultar** um funcionário tira ele da visão da folha/alocação quando ele não tem mais nada a
+        tratar no período (tipicamente **saldo zero**). **Exibir** desfaz isso.
+
+        ## A regra do saldo (importante)
+        - Só deve poder ocultar quem está **de fato quitado** — e "quitado" significa **netar
+          pagamento e retirada**, não olhar só o pagamento. Quem recebeu retirada ainda pode ter saldo.
+
+        ## O que ocultar NÃO pode fazer
+        - Não pode **sumir** com valor no consolidado: alocação e pacote do oculto saem das contas
+          visíveis, mas sem quebrar o total.
+        - Um funcionário ocultado **não deve reaparecer** no ajuste/detalhe da folha (a visão ao vivo
+          e o *snapshot* têm que concordar — a correção certa mora no snapshot).
+
+        Ocultar é organização visual com regra de negócio embutida: esconde o que está resolvido, sem
+        falsear número nenhum.
+        """,
+
+        // ── Quiz Quality (visão geral — completar pelo squad) ───────────────────────
+        ["Visão geral do Quiz Quality"] = """
+        ## Visão geral do Quiz Quality
+        O **Quiz Quality (QQ)** é o squad de **inspeção e qualidade** — a parte do produto que checa
+        se o que foi executado na obra está conforme.
+
+        > _Visão geral inicial — os detalhes de tela devem ser completados por alguém do squad QQ._
+
+        ## Ideia geral
+        - Cria e conduz **inspeções** de qualidade.
+        - Gera **relatórios** do que foi inspecionado.
+        - Alimenta a decisão de aceitar / rejeitar / retrabalhar uma frente.
+
+        Se você entrou no QQ, use este módulo como esqueleto e complete cada fluxo com o passo a passo
+        real da sua tela.
+        """,
+        ["Inspeções"] = """
+        ## Inspeções
+        A **inspeção** é o registro de uma verificação de qualidade em campo: o que foi checado, o
+        resultado e as evidências.
+
+        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad QQ._
+
+        ## Em linhas gerais
+        - Criar uma inspeção (o que / onde inspecionar).
+        - Registrar itens e resultado (conforme / não conforme).
+        - Anexar evidências e concluir.
+
+        O detalhe de cada campo e botão fica pendente de curadoria do squad.
+        """,
+        ["Relatórios de qualidade"] = """
+        ## Relatórios de qualidade
+        Os **relatórios** consolidam as inspeções: o que passou, o que reprovou e onde estão os pontos
+        de atenção da obra.
+
+        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad QQ._
+
+        ## Em linhas gerais
+        - Ler o resultado consolidado das inspeções.
+        - Filtrar por período / frente.
+        - Exportar quando preciso.
+
+        Complete com as opções reais de filtro e exportação da tela.
+        """,
+
+        // ── Agilean desktop (visão geral — completar pelo squad) ────────────────────
+        ["Visão geral do Agilean"] = """
+        ## Visão geral do Agilean
+        O **Agilean (desktop)** é o aplicativo de **planejamento da obra** — onde o plano é montado e
+        acompanhado, fora do portal web.
+
+        > _Visão geral inicial — completar com detalhes de tela por alguém do squad Agilean._
+
+        ## Ideia geral
+        - Montar o **planejamento** (o que fazer, quando).
+        - Acompanhar o **avanço** contra o previsto.
+
+        Use como esqueleto; o passo a passo real do desktop deve ser preenchido por quem é do squad.
+        """,
+        ["Planejamento"] = """
+        ## Planejamento
+        No **planejamento** você monta o plano da obra no desktop: as etapas, a sequência e os prazos.
+
+        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad Agilean._
+
+        ## Em linhas gerais
+        - Definir etapas / frentes e sua ordem.
+        - Estabelecer prazos e dependências.
+
+        O detalhe de cada tela do desktop fica pendente de curadoria do squad.
+        """,
+        ["Acompanhamento"] = """
+        ## Acompanhamento
+        O **acompanhamento** compara o avanço real da obra com o que foi planejado, pra enxergar
+        atraso / adiantamento cedo.
+
+        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad Agilean._
+
+        ## Em linhas gerais
+        - Registrar avanço das etapas.
+        - Comparar previsto vs. realizado.
+
+        Complete com as telas e indicadores reais do desktop.
+        """,
+    };
 
     // Fluxos genéricos do dia a dia do dev (os que já existiam no #4), agora no módulo "Básico do dev".
     private static IEnumerable<Fluxo> BasicoDoDev(ref int ordem)
