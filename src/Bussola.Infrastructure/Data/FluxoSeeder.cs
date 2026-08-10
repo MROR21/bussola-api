@@ -3,20 +3,102 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bussola.Infrastructure.Data;
 
-// Semeia os fluxos da "Referência viva". Idempotente: só insere se a tabela estiver vazia.
+// Semeia os fluxos da "Referência viva", organizados em módulos (por squad + básico do dev).
+// Idempotente + faz upgrade: se a tabela já tem os antigos (sem módulo), preenche o módulo e
+// insere os fluxos que faltam (por título). Fluxos são 100% conteúdo semeado (sem dado de usuário).
 public static class FluxoSeeder
 {
+    private const string ModuloMdO = "Mão de Obra";
+    private const string ModuloBasico = "Básico do dev";
+
     public static async Task SeedAsync(AppDbContext db)
     {
-        if (await db.Fluxos.AnyAsync())
+        var todos = Definicoes();
+
+        if (!await db.Fluxos.AnyAsync())
         {
+            db.Fluxos.AddRange(todos);
+            await db.SaveChangesAsync();
             return;
         }
 
-        db.Fluxos.AddRange(
-            new Fluxo
+        var existentes = await db.Fluxos.ToListAsync();
+        var alterou = false;
+
+        // Antigos sem módulo (seed do #4) → viram "Básico do dev".
+        foreach (var fluxo in existentes.Where(f => string.IsNullOrWhiteSpace(f.Modulo)))
+        {
+            fluxo.Modulo = ModuloBasico;
+            alterou = true;
+        }
+
+        // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
+        var titulos = existentes.Select(f => f.Titulo).ToHashSet();
+        var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
+        if (novos.Count > 0)
+        {
+            db.Fluxos.AddRange(novos);
+            alterou = true;
+        }
+
+        if (alterou)
+        {
+            await db.SaveChangesAsync();
+        }
+    }
+
+    // Stub de conteúdo pros fluxos do sistema que ainda serão curados (com o vídeo real).
+    private static string StubSistema(string titulo) => $"""
+        ## {titulo}
+        _(Conteúdo a curar — aqui entra o passo a passo da tela, com o vídeo do sistema acima.)_
+        """;
+
+    private static List<Fluxo> Definicoes()
+    {
+        var mdo = new (string Titulo, string Descricao)[]
+        {
+            ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra."),
+            ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período."),
+            ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha."),
+            ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação."),
+            ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários."),
+            ("Orçamento de mão de obra", "Como o orçamento de MdO é montado."),
+            ("Despesas indiretas", "O que são e como entram no orçamento."),
+            ("Pacotes de trabalho", "Agrupar serviços em pacotes."),
+            ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação."),
+            ("Distribuição automática", "Distribuir valores automaticamente pela equipe."),
+            ("Devolver valor a pagar", "Quando e como devolver um valor a pagar."),
+            ("Custos e relatórios", "Ler os custos consolidados da obra."),
+            ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário."),
+        };
+
+        var lista = new List<Fluxo>();
+        var ordem = 1;
+        foreach (var (titulo, descricao) in mdo)
+        {
+            lista.Add(new Fluxo
             {
-                Order = 1,
+                Order = ordem++,
+                Modulo = ModuloMdO,
+                Categoria = "Sistema",
+                Titulo = titulo,
+                Descricao = descricao,
+                Conteudo = StubSistema(titulo),
+                VideoUrl = string.Empty,
+            });
+        }
+
+        lista.AddRange(BasicoDoDev(ref ordem));
+        return lista;
+    }
+
+    // Fluxos genéricos do dia a dia do dev (os que já existiam no #4), agora no módulo "Básico do dev".
+    private static IEnumerable<Fluxo> BasicoDoDev(ref int ordem)
+    {
+        var basicos = new List<Fluxo>
+        {
+            new()
+            {
                 Categoria = "Git & PR",
                 Titulo = "Abrir um PR",
                 Descricao = "Do commit ao pull request no Bitbucket.",
@@ -30,9 +112,8 @@ public static class FluxoSeeder
                 > Nada de placeholder — o PR é real e vai pra review.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 2,
                 Categoria = "Git & PR",
                 Titulo = "Rebase no support",
                 Descricao = "Trazer sua branch pro topo do support antes de subir.",
@@ -46,9 +127,8 @@ public static class FluxoSeeder
                 Ao final, suba com `git push --force-with-lease` (nunca `--force` puro).
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 3,
                 Categoria = "Git & PR",
                 Titulo = "Bump de submódulo",
                 Descricao = "Apontar o api pro novo commit do submódulo.",
@@ -63,9 +143,8 @@ public static class FluxoSeeder
                 Sem o bump, o CI compila a versão antiga do submódulo.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 4,
                 Categoria = "Jira",
                 Titulo = "Pegar e mover um card",
                 Descricao = "Assumir um card e sinalizar que está trabalhando nele.",
@@ -78,9 +157,8 @@ public static class FluxoSeeder
                 Anote o código (ex.: `MDO-123`) — ele vira o nome da sua branch.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 5,
                 Categoria = "Jira",
                 Titulo = "Documentar e transicionar",
                 Descricao = "Fechar o card certo depois do merge.",
@@ -93,9 +171,8 @@ public static class FluxoSeeder
                 Não mova o card na abertura do PR — só quando ele estiver mergeado.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 6,
                 Categoria = "Padrões",
                 Titulo = "Estilo com tokens ads-*",
                 Descricao = "Como estilizar sem CSS custom.",
@@ -108,9 +185,8 @@ public static class FluxoSeeder
                 **Nunca** hex hardcoded nem `.css` próprio. O lint reprova classe custom.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 7,
                 Categoria = "Padrões",
                 Titulo = "data-cy nos elementos",
                 Descricao = "Marcar elementos para os testes.",
@@ -124,9 +200,8 @@ public static class FluxoSeeder
                 O prefixo de módulo é único por tela.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 8,
                 Categoria = "Padrões",
                 Titulo = "Rodar o gate",
                 Descricao = "Lint + build, o mesmo do CI.",
@@ -140,9 +215,8 @@ public static class FluxoSeeder
                 No front, **warning conta como erro**. Só suba com tudo verde.
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 9,
                 Categoria = "Ambiente",
                 Titulo = "Clonar com submódulos",
                 Descricao = "Trazer os repos com os submódulos juntos.",
@@ -157,9 +231,8 @@ public static class FluxoSeeder
                 ```
                 """,
             },
-            new Fluxo
+            new()
             {
-                Order = 10,
                 Categoria = "Ambiente",
                 Titulo = "Subir front e back",
                 Descricao = "Rodar o ambiente local.",
@@ -170,9 +243,15 @@ public static class FluxoSeeder
 
                 Confirme que o front conversa com o back antes de codar.
                 """,
-            }
-        );
+            },
+        };
 
-        await db.SaveChangesAsync();
+        foreach (var fluxo in basicos)
+        {
+            fluxo.Order = ordem++;
+            fluxo.Modulo = ModuloBasico;
+            fluxo.VideoUrl = string.Empty;
+        }
+        return basicos;
     }
 }
