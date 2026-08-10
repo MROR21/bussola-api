@@ -214,6 +214,12 @@ app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, C
     if (usuario.IsGestor) return Results.BadRequest(new { erro = "Não dá pra supervisionar um gestor." });
 
     usuario.GestorId = gestorId;
+    var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
+    db.Notificacoes.Add(new Notificacao
+    {
+        UsuarioId = usuarioId,
+        Mensagem = $"{gestorNome} adicionou você como supervisionado.",
+    });
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
@@ -239,6 +245,51 @@ app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId,
 })
    .WithName("RemoveSupervisionado")
    .RequireAuthorization("Gestor");
+
+// --- Notificações (do usuário logado, lido do token) ---
+
+app.MapGet("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var itens = await db.Notificacoes
+        .Where(n => n.UsuarioId == userId)
+        .OrderByDescending(n => n.CriadaEm)
+        .Take(30)
+        .ToListAsync();
+
+    return Results.Ok(itens);
+})
+   .WithName("GetNotificacoes")
+   .RequireAuthorization();
+
+// Marca todas as não-lidas do usuário como lidas.
+app.MapPost("/notificacoes/ler", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var naoLidas = await db.Notificacoes
+        .Where(n => n.UsuarioId == userId && !n.Lida)
+        .ToListAsync();
+    foreach (var n in naoLidas)
+    {
+        n.Lida = true;
+    }
+    if (naoLidas.Count > 0)
+    {
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("LerNotificacoes")
+   .RequireAuthorization();
 
 // --- Auth + Usuário + Progresso ---
 
@@ -343,6 +394,13 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
+    string? gestorNome = null;
+    if (usuario.GestorId is Guid gestorId)
+    {
+        var gestor = await db.Usuarios.FindAsync(gestorId);
+        gestorNome = gestor?.Nome;
+    }
+
     return Results.Ok(new
     {
         usuario.Id,
@@ -351,6 +409,7 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
         usuario.Cargo,
         usuario.IsGestor,
         usuario.NivelamentoConcluido,
+        GestorNome = gestorNome,
         perfil = usuario.ToPerfil(),
     });
 })
@@ -373,6 +432,18 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
     if (!jaConcluido)
     {
         db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId });
+
+        // Notifica o gestor (se houver) quando o supervisionado avança de fato.
+        var usuario = await db.Usuarios.FindAsync(id);
+        if (usuario?.GestorId is Guid gestorId)
+        {
+            db.Notificacoes.Add(new Notificacao
+            {
+                UsuarioId = gestorId,
+                Mensagem = $"{usuario.Nome} concluiu um passo da jornada.",
+            });
+        }
+
         await db.SaveChangesAsync();
     }
 
