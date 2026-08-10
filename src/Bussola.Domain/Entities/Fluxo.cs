@@ -1,3 +1,5 @@
+using Bussola.Domain.Nivelamento;
+
 namespace Bussola.Domain.Entities;
 
 // Um fluxo do dia a dia (a "Referência viva"): consultável a qualquer momento, fora da jornada.
@@ -7,6 +9,8 @@ public class Fluxo
     public int Order { get; set; }
     // Módulo = agrupamento por squad/área ("Mão de Obra", "Básico do dev"). Organiza a Referência.
     public string Modulo { get; set; } = string.Empty;
+    // Squad ao qual o fluxo pertence. null = vale pra todos (ex.: "Básico do dev").
+    public Squad? Squad { get; set; }
     public string Categoria { get; set; } = string.Empty;
     public string Titulo { get; set; } = string.Empty;
     public string Descricao { get; set; } = string.Empty;

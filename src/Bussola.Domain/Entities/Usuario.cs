@@ -17,6 +17,7 @@ public class Usuario
 
     // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
     public Cargo Cargo { get; set; } = Cargo.Estagiario;
+    public Squad Squad { get; set; } = Squad.MaoDeObra;
     public SkillLevel Frontend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Backend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Git { get; set; } = SkillLevel.Nenhum;

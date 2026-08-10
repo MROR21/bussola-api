@@ -1,4 +1,5 @@
 using Bussola.Domain.Entities;
+using Bussola.Domain.Nivelamento;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bussola.Infrastructure.Data;
@@ -32,6 +33,13 @@ public static class FluxoSeeder
             alterou = true;
         }
 
+        // Fluxos do módulo Mão de Obra sem squad definido → recebem o squad MdO.
+        foreach (var fluxo in existentes.Where(f => f.Modulo == ModuloMdO && f.Squad == null))
+        {
+            fluxo.Squad = Squad.MaoDeObra;
+            alterou = true;
+        }
+
         // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
         var titulos = existentes.Select(f => f.Titulo).ToHashSet();
         var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
@@ -55,37 +63,56 @@ public static class FluxoSeeder
 
     private static List<Fluxo> Definicoes()
     {
-        var mdo = new (string Titulo, string Descricao)[]
+        var sistemas = new (string Modulo, Squad Squad, (string Titulo, string Descricao)[] Fluxos)[]
         {
-            ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra."),
-            ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período."),
-            ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha."),
-            ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação."),
-            ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários."),
-            ("Orçamento de mão de obra", "Como o orçamento de MdO é montado."),
-            ("Despesas indiretas", "O que são e como entram no orçamento."),
-            ("Pacotes de trabalho", "Agrupar serviços em pacotes."),
-            ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação."),
-            ("Distribuição automática", "Distribuir valores automaticamente pela equipe."),
-            ("Devolver valor a pagar", "Quando e como devolver um valor a pagar."),
-            ("Custos e relatórios", "Ler os custos consolidados da obra."),
-            ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário."),
+            (ModuloMdO, Squad.MaoDeObra, new (string, string)[]
+            {
+                ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra."),
+                ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período."),
+                ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha."),
+                ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação."),
+                ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários."),
+                ("Orçamento de mão de obra", "Como o orçamento de MdO é montado."),
+                ("Despesas indiretas", "O que são e como entram no orçamento."),
+                ("Pacotes de trabalho", "Agrupar serviços em pacotes."),
+                ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação."),
+                ("Distribuição automática", "Distribuir valores automaticamente pela equipe."),
+                ("Devolver valor a pagar", "Quando e como devolver um valor a pagar."),
+                ("Custos e relatórios", "Ler os custos consolidados da obra."),
+                ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário."),
+            }),
+            ("Quiz Quality", Squad.QuizQuality, new (string, string)[]
+            {
+                ("Visão geral do Quiz Quality", "O que o squad de qualidade/inspeção faz."),
+                ("Inspeções", "Como criar e conduzir uma inspeção."),
+                ("Relatórios de qualidade", "Ler e exportar os relatórios de qualidade."),
+            }),
+            ("Agilean (desktop)", Squad.Agilean, new (string, string)[]
+            {
+                ("Visão geral do Agilean", "O aplicativo de planejamento da obra."),
+                ("Planejamento", "Montar o planejamento no desktop."),
+                ("Acompanhamento", "Acompanhar o avanço do plano."),
+            }),
         };
 
         var lista = new List<Fluxo>();
         var ordem = 1;
-        foreach (var (titulo, descricao) in mdo)
+        foreach (var (modulo, squad, fluxos) in sistemas)
         {
-            lista.Add(new Fluxo
+            foreach (var (titulo, descricao) in fluxos)
             {
-                Order = ordem++,
-                Modulo = ModuloMdO,
-                Categoria = "Sistema",
-                Titulo = titulo,
-                Descricao = descricao,
-                Conteudo = StubSistema(titulo),
-                VideoUrl = string.Empty,
-            });
+                lista.Add(new Fluxo
+                {
+                    Order = ordem++,
+                    Modulo = modulo,
+                    Squad = squad,
+                    Categoria = "Sistema",
+                    Titulo = titulo,
+                    Descricao = descricao,
+                    Conteudo = StubSistema(titulo),
+                    VideoUrl = string.Empty,
+                });
+            }
         }
 
         lista.AddRange(BasicoDoDev(ref ordem));

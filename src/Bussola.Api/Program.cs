@@ -364,7 +364,7 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.IsGestor },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor },
     });
 })
    .WithName("Register");
@@ -397,23 +397,25 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.IsGestor },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor },
     });
 })
    .WithName("Login");
 
 // Salva o nivelamento (Perfil) no usuário.
-app.MapPut("/users/{id:guid}/perfil", async (Guid id, Perfil perfil, AppDbContext db) =>
+app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, AppDbContext db) =>
 {
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
+    var perfil = req.Perfil;
     usuario.Cargo = perfil.Cargo;
     usuario.Frontend = perfil.Frontend;
     usuario.Backend = perfil.Backend;
     usuario.Git = perfil.Git;
     usuario.Sql = perfil.Sql;
     usuario.Jira = perfil.Jira;
+    usuario.Squad = req.Squad;
     usuario.NivelamentoConcluido = true;
     await db.SaveChangesAsync();
 
@@ -441,6 +443,7 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
         usuario.Nome,
         Email = usuario.Email.Value,
         usuario.Cargo,
+        usuario.Squad,
         usuario.IsGestor,
         usuario.NivelamentoConcluido,
         GestorNome = gestorNome,
@@ -507,3 +510,6 @@ app.Run();
 // Corpos de autenticação.
 record LoginRequest(string Email, string Senha);
 record RegisterRequest(string Nome, string Email, string Senha);
+
+// Corpo do salvar-perfil (nivelamento): perfil de skills + squad.
+record SalvarPerfilRequest(Perfil Perfil, Squad Squad);
