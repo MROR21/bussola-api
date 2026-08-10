@@ -243,25 +243,69 @@ app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId,
 // --- Auth + Usuário + Progresso ---
 
 // Login demo: get-or-create por email + emite JWT (token com expiração).
+// Cadastro (auto-serviço): nome + email + senha → cria a conta e já loga.
+app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, TokenService tokens, IConfiguration config) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Nome))
+    {
+        return Results.BadRequest(new { erro = "Informe seu nome." });
+    }
+    if (!Email.TryCreate(req.Email, out var email))
+    {
+        return Results.BadRequest(new { erro = "Email inválido." });
+    }
+    if (string.IsNullOrWhiteSpace(req.Senha) || req.Senha.Length < 6)
+    {
+        return Results.BadRequest(new { erro = "A senha precisa de ao menos 6 caracteres." });
+    }
+    if (await db.Usuarios.AnyAsync(u => u.Email == email))
+    {
+        return Results.BadRequest(new { erro = "Já existe uma conta com esse e-mail." });
+    }
+
+    var gestores = config.GetSection("Gestores").Get<string[]>() ?? [];
+    var usuario = new Usuario
+    {
+        Nome = req.Nome.Trim(),
+        Email = email!,
+        SenhaHash = SenhaHasher.Hash(req.Senha),
+        IsGestor = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase)),
+    };
+    db.Usuarios.Add(usuario);
+    await db.SaveChangesAsync();
+
+    var (token, expiraEm) = tokens.Emitir(usuario);
+    return Results.Ok(new
+    {
+        token,
+        expiraEm,
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.IsGestor },
+    });
+})
+   .WithName("Register");
+
+// Login: verifica e-mail + senha.
 app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenService tokens, IConfiguration config) =>
 {
-    // O Value Object valida o email: se não passar, nem chega no banco.
     if (!Email.TryCreate(req.Email, out var email))
     {
         return Results.BadRequest(new { erro = "Email inválido." });
     }
 
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
+    if (usuario is null || !SenhaHasher.Verificar(req.Senha, usuario.SenhaHash))
+    {
+        return Results.Json(new { erro = "E-mail ou senha inválidos." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    // Reaplica o papel de gestor conforme o appsettings (caso a lista tenha mudado).
     var gestores = config.GetSection("Gestores").Get<string[]>() ?? [];
     var ehGestor = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
-
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
-    if (usuario is null)
+    if (usuario.IsGestor != ehGestor)
     {
-        usuario = new Usuario { Nome = req.Nome, Email = email! };
-        db.Usuarios.Add(usuario);
+        usuario.IsGestor = ehGestor;
+        await db.SaveChangesAsync();
     }
-    usuario.IsGestor = ehGestor; // refaz o papel a cada login, conforme o appsettings
-    await db.SaveChangesAsync();
 
     var (token, expiraEm) = tokens.Emitir(usuario);
     return Results.Ok(new
@@ -354,5 +398,6 @@ app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid st
 
 app.Run();
 
-// Corpo do login (get-or-create por email).
-record LoginRequest(string Nome, string Email);
+// Corpos de autenticação.
+record LoginRequest(string Email, string Senha);
+record RegisterRequest(string Nome, string Email, string Senha);

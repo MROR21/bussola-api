@@ -12,6 +12,9 @@ public class Usuario
     // Email é um Value Object: required força setar na criação (nunca fica num estado inválido).
     public required Email Email { get; set; }
 
+    // Hash da senha (PBKDF2 "salt.hash"). Preenchido no cadastro; verificado no login.
+    public string SenhaHash { get; set; } = string.Empty;
+
     // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
     public Cargo Cargo { get; set; } = Cargo.Estagiario;
     public SkillLevel Frontend { get; set; } = SkillLevel.Nenhum;
