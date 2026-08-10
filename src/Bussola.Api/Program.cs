@@ -66,6 +66,27 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await OnboardingSeeder.SeedAsync(db);
     await FluxoSeeder.SeedAsync(db);
+
+    // Backfill: notificações antigas de "liberou o fluxo" (sem link) ganham o redirecionamento.
+    const string prefixoLiberou = "Seu gestor liberou o fluxo: ";
+    var semLink = await db.Notificacoes
+        .Where(n => n.Link == "" && n.Mensagem.StartsWith(prefixoLiberou))
+        .ToListAsync();
+    if (semLink.Count > 0)
+    {
+        var idPorTitulo = (await db.Fluxos.ToListAsync())
+            .GroupBy(f => f.Titulo)
+            .ToDictionary(g => g.Key, g => g.First().Id);
+        foreach (var n in semLink)
+        {
+            var titulo = n.Mensagem[prefixoLiberou.Length..].TrimEnd('.', ' ');
+            if (idPorTitulo.TryGetValue(titulo, out var fid))
+            {
+                n.Link = $"/fluxos?destaque={fid}";
+            }
+        }
+        await db.SaveChangesAsync();
+    }
 }
 
 // Rede de segurança: qualquer exceção não-tratada vira um 500 { erro } limpo (sem stack pro
