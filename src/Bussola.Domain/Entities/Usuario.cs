@@ -24,6 +24,9 @@ public class Usuario
     // de "ainda não respondeu" — o front usa pra pular o questionário e ir direto pra trilha.
     public bool NivelamentoConcluido { get; set; }
 
+    // Papel de gestor (definido no login pela lista de e-mails no appsettings). Libera o painel do gestor.
+    public bool IsGestor { get; set; }
+
     public List<PassoConcluido> PassosConcluidos { get; set; } = [];
 
     // Monta o record Perfil (value object usado pelo TrailPlanner) a partir das colunas.

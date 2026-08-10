@@ -21,12 +21,16 @@ public class TokenService(IConfiguration config)
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
             SecurityAlgorithms.HmacSha256);
 
-        Claim[] claims =
-        [
+        var claims = new List<Claim>
+        {
             new(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, usuario.Email.Value),
             new("nome", usuario.Nome),
-        ];
+        };
+        if (usuario.IsGestor)
+        {
+            claims.Add(new Claim("gestor", "true"));
+        }
 
         var jwt = new JwtSecurityToken(
             issuer: issuer,

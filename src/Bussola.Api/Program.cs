@@ -1,10 +1,13 @@
+using System.Text;
 using Bussola.Api.Auth;
 using Bussola.Domain.Entities;
 using Bussola.Domain.Nivelamento;
 using Bussola.Domain.ValueObjects;
 using Bussola.Infrastructure.Data;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +33,27 @@ builder.Services.AddCors(options =>
 
 // Emissor de JWT (login demo — token com expiração).
 builder.Services.AddSingleton<TokenService>();
+
+// Validação do JWT (Auth B): protege os endpoints do gestor. O front manda o Bearer token.
+var jwtKey = builder.Configuration["Jwt:Key"]!;
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtIssuer,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateLifetime = true,
+        };
+    });
+builder.Services.AddAuthorization(options =>
+    options.AddPolicy("Gestor", policy => policy.RequireClaim("gestor", "true")));
 
 var app = builder.Build();
 
@@ -60,6 +84,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors(FrontCors);
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "bussola-api" }))
    .WithName("Health");
@@ -121,10 +147,41 @@ app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
 })
    .WithName("GetFluxo");
 
+// --- Gestor (protegido pela policy "Gestor") ---
+
+// Lista os usuários com o progresso de cada um. Só um gestor (claim no token) acessa.
+app.MapGet("/gestor/usuarios", async (AppDbContext db) =>
+{
+    var totalPassos = await db.OnboardingSteps.CountAsync();
+    var concluidosPorUsuario = await db.PassosConcluidos
+        .GroupBy(passo => passo.UsuarioId)
+        .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
+        .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
+
+    var usuarios = await db.Usuarios.OrderBy(u => u.Nome).ToListAsync();
+
+    // Projeção em memória: Email é Value Object (não dá pra projetar .Value no SQL).
+    var resultado = usuarios.Select(u => new
+    {
+        u.Id,
+        u.Nome,
+        Email = u.Email.Value,
+        u.Cargo,
+        u.IsGestor,
+        u.NivelamentoConcluido,
+        PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0),
+        TotalPassos = totalPassos,
+    });
+
+    return Results.Ok(resultado);
+})
+   .WithName("GetGestorUsuarios")
+   .RequireAuthorization("Gestor");
+
 // --- Auth + Usuário + Progresso ---
 
 // Login demo: get-or-create por email + emite JWT (token com expiração).
-app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenService tokens) =>
+app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenService tokens, IConfiguration config) =>
 {
     // O Value Object valida o email: se não passar, nem chega no banco.
     if (!Email.TryCreate(req.Email, out var email))
@@ -132,20 +189,24 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
         return Results.BadRequest(new { erro = "Email inválido." });
     }
 
+    var gestores = config.GetSection("Gestores").Get<string[]>() ?? [];
+    var ehGestor = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
+
     var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
     if (usuario is null)
     {
         usuario = new Usuario { Nome = req.Nome, Email = email! };
         db.Usuarios.Add(usuario);
-        await db.SaveChangesAsync();
     }
+    usuario.IsGestor = ehGestor; // refaz o papel a cada login, conforme o appsettings
+    await db.SaveChangesAsync();
 
     var (token, expiraEm) = tokens.Emitir(usuario);
     return Results.Ok(new
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.IsGestor },
     });
 })
    .WithName("Login");
@@ -182,6 +243,7 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
         usuario.Nome,
         Email = usuario.Email.Value,
         usuario.Cargo,
+        usuario.IsGestor,
         usuario.NivelamentoConcluido,
         perfil = usuario.ToPerfil(),
     });
