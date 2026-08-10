@@ -188,6 +188,40 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
    .WithName("GetGestorUsuarios")
    .RequireAuthorization("Gestor");
 
+// Progresso passo-a-passo de um supervisionado (só do gestor dono dele).
+app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var concluidos = (await db.PassosConcluidos
+        .Where(p => p.UsuarioId == usuarioId)
+        .Select(p => p.OnboardingStepId)
+        .ToListAsync()).ToHashSet();
+
+    var steps = await db.OnboardingSteps.OrderBy(s => s.Order).ToListAsync();
+    var passos = steps.Select(s => new
+    {
+        s.Id,
+        s.Order,
+        s.Phase,
+        s.Title,
+        Concluido = concluidos.Contains(s.Id),
+    });
+
+    return Results.Ok(new { alvo.Nome, Passos = passos });
+})
+   .WithName("GetProgressoSupervisionado")
+   .RequireAuthorization("Gestor");
+
 // Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
 app.MapGet("/gestor/disponiveis", async (AppDbContext db) =>
 {
@@ -433,14 +467,15 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
     {
         db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId });
 
-        // Notifica o gestor (se houver) quando o supervisionado avança de fato.
+        // Notifica o gestor (se houver) quando o supervisionado avança de fato, dizendo QUAL passo.
         var usuario = await db.Usuarios.FindAsync(id);
         if (usuario?.GestorId is Guid gestorId)
         {
+            var step = await db.OnboardingSteps.FindAsync(stepId);
             db.Notificacoes.Add(new Notificacao
             {
                 UsuarioId = gestorId,
-                Mensagem = $"{usuario.Nome} concluiu um passo da jornada.",
+                Mensagem = $"{usuario.Nome} concluiu: {step?.Title ?? "um passo"}.",
             });
         }
 
