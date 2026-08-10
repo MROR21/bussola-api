@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Bussola.Api.Auth;
 using Bussola.Domain.Entities;
@@ -41,6 +42,7 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.MapInboundClaims = false; // mantém "sub"/"gestor" com o nome original
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -149,16 +151,24 @@ app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // --- Gestor (protegido pela policy "Gestor") ---
 
-// Lista os usuários com o progresso de cada um. Só um gestor (claim no token) acessa.
-app.MapGet("/gestor/usuarios", async (AppDbContext db) =>
+// Lista os SUPERVISIONADOS do gestor logado, com o progresso de cada um.
+app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
     var totalPassos = await db.OnboardingSteps.CountAsync();
     var concluidosPorUsuario = await db.PassosConcluidos
         .GroupBy(passo => passo.UsuarioId)
         .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
         .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
 
-    var usuarios = await db.Usuarios.OrderBy(u => u.Nome).ToListAsync();
+    var usuarios = await db.Usuarios
+        .Where(u => u.GestorId == gestorId)
+        .OrderBy(u => u.Nome)
+        .ToListAsync();
 
     // Projeção em memória: Email é Value Object (não dá pra projetar .Value no SQL).
     var resultado = usuarios.Select(u => new
@@ -176,6 +186,58 @@ app.MapGet("/gestor/usuarios", async (AppDbContext db) =>
     return Results.Ok(resultado);
 })
    .WithName("GetGestorUsuarios")
+   .RequireAuthorization("Gestor");
+
+// Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
+app.MapGet("/gestor/disponiveis", async (AppDbContext db) =>
+{
+    var usuarios = await db.Usuarios
+        .Where(u => !u.IsGestor && u.GestorId == null)
+        .OrderBy(u => u.Nome)
+        .ToListAsync();
+
+    return Results.Ok(usuarios.Select(u => new { u.Id, u.Nome, Email = u.Email.Value, u.Cargo }));
+})
+   .WithName("GetGestorDisponiveis")
+   .RequireAuthorization("Gestor");
+
+// Associa um usuário como supervisionado do gestor logado.
+app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(usuarioId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+    if (usuario.IsGestor) return Results.BadRequest(new { erro = "Não dá pra supervisionar um gestor." });
+
+    usuario.GestorId = gestorId;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AddSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Remove a supervisão (só se a pessoa for supervisionada deste gestor).
+app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(usuarioId);
+    if (usuario is not null && usuario.GestorId == gestorId)
+    {
+        usuario.GestorId = null;
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("RemoveSupervisionado")
    .RequireAuthorization("Gestor");
 
 // --- Auth + Usuário + Progresso ---

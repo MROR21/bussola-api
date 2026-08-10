@@ -27,6 +27,9 @@ public class Usuario
     // Papel de gestor (definido no login pela lista de e-mails no appsettings). Libera o painel do gestor.
     public bool IsGestor { get; set; }
 
+    // Gestor responsável por este usuário (null = sem supervisor). Um gestor só vê seus supervisionados.
+    public Guid? GestorId { get; set; }
+
     public List<PassoConcluido> PassosConcluidos { get; set; } = [];
 
     // Monta o record Perfil (value object usado pelo TrailPlanner) a partir das colunas.
