@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using Bussola.Api.Auth;
+using Bussola.Api.Services;
 using Bussola.Domain.Entities;
 using Bussola.Domain.Nivelamento;
 using Bussola.Domain.ValueObjects;
@@ -35,6 +36,10 @@ builder.Services.AddCors(options =>
 // Emissor de JWT (login demo — token com expiração).
 builder.Services.AddSingleton<TokenService>();
 
+// Entrega dos eventos no Teams (Incoming Webhook). Sem URL = no-op/mock.
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<TeamsNotifier>();
+
 // Validação do JWT (Auth B): protege os endpoints do gestor. O front manda o Bearer token.
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -58,6 +63,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Gestor", policy => policy.RequireClaim("gestor", "true")));
 
 var app = builder.Build();
+
+// TeamsNotifier é singleton → resolvo uma vez e uso nos eventos (evita injetar em cada endpoint).
+var teams = app.Services.GetRequiredService<TeamsNotifier>();
 
 // Ao iniciar: aplica migrations pendentes e semeia os dados iniciais (dev).
 using (var scope = app.Services.CreateScope())
@@ -225,17 +233,16 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
         db.FluxosConcluidos.Add(new FluxoConcluido { UsuarioId = userId, FluxoId = fluxoId });
 
         var usuario = await db.Usuarios.FindAsync(userId);
+        string? msgTeams = null;
         if (usuario?.GestorId is Guid gestorId)
         {
             var fluxo = await db.Fluxos.FindAsync(fluxoId);
-            db.Notificacoes.Add(new Notificacao
-            {
-                UsuarioId = gestorId,
-                Mensagem = $"{usuario.Nome} concluiu o fluxo: {fluxo?.Titulo ?? "um fluxo"}.",
-            });
+            msgTeams = $"{usuario.Nome} concluiu o fluxo: {fluxo?.Titulo ?? "um fluxo"}.";
+            db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msgTeams });
         }
 
         await db.SaveChangesAsync();
+        if (msgTeams is not null) await teams.EnviarAsync(msgTeams);
     }
 
     return Results.NoContent();
@@ -400,6 +407,7 @@ app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, C
         Mensagem = $"{gestorNome} adicionou você como supervisionado.",
     });
     await db.SaveChangesAsync();
+    await teams.EnviarAsync($"{gestorNome} adicionou {usuario.Nome} como supervisionado.");
     return Results.NoContent();
 })
    .WithName("AddSupervisionado")
@@ -473,6 +481,7 @@ app.MapPost("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Gu
             Link = $"/fluxos?destaque={fluxoId}",
         });
         await db.SaveChangesAsync();
+        await teams.EnviarAsync($"{alvo.Nome} recebeu o fluxo: {fluxo.Titulo}.");
     }
 
     return Results.NoContent();
@@ -699,17 +708,16 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
 
         // Notifica o gestor (se houver) quando o supervisionado avança de fato, dizendo QUAL passo.
         var usuario = await db.Usuarios.FindAsync(id);
+        string? msgTeams = null;
         if (usuario?.GestorId is Guid gestorId)
         {
             var step = await db.OnboardingSteps.FindAsync(stepId);
-            db.Notificacoes.Add(new Notificacao
-            {
-                UsuarioId = gestorId,
-                Mensagem = $"{usuario.Nome} concluiu: {step?.Title ?? "um passo"}.",
-            });
+            msgTeams = $"{usuario.Nome} concluiu: {step?.Title ?? "um passo"}.";
+            db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msgTeams });
         }
 
         await db.SaveChangesAsync();
+        if (msgTeams is not null) await teams.EnviarAsync(msgTeams);
     }
 
     return Results.NoContent();
