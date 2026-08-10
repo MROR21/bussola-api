@@ -18,8 +18,37 @@ public class TeamsNotifier(IConfiguration config, IHttpClientFactory httpFactory
         try
         {
             var client = httpFactory.CreateClient();
-            // Payload simples aceito pelo Incoming Webhook do Teams (renderiza como card de texto).
-            await client.PostAsJsonAsync(url, new { text = mensagem });
+            // Cartão adaptável — formato que o fluxo "Enviar alertas de webhook para canal" renderiza.
+            var payload = new
+            {
+                type = "message",
+                attachments = new[]
+                {
+                    new
+                    {
+                        contentType = "application/vnd.microsoft.card.adaptive",
+                        content = new
+                        {
+                            type = "AdaptiveCard",
+                            version = "1.4",
+                            body = new object[]
+                            {
+                                new
+                                {
+                                    type = "TextBlock",
+                                    text = "🧭 Bússola",
+                                    weight = "Bolder",
+                                    color = "Accent",
+                                    size = "Small",
+                                    spacing = "None",
+                                },
+                                new { type = "TextBlock", text = mensagem, wrap = true, size = "Medium" },
+                            },
+                        },
+                    },
+                },
+            };
+            await client.PostAsJsonAsync(url, payload);
         }
         catch (Exception e)
         {
