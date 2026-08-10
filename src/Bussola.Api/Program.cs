@@ -480,6 +480,33 @@ app.MapPost("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Gu
    .WithName("AtribuirFluxo")
    .RequireAuthorization("Gestor");
 
+// Desvincula (remove) um fluxo antes atribuído a um supervisionado do gestor.
+app.MapDelete("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Guid fluxoId, Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var atrib = await db.FluxosAtribuidos
+        .FirstOrDefaultAsync(a => a.FluxoId == fluxoId && a.UsuarioId == usuarioId);
+    if (atrib is not null)
+    {
+        db.FluxosAtribuidos.Remove(atrib);
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+   .WithName("DesvincularFluxo")
+   .RequireAuthorization("Gestor");
+
 // --- Notificações (do usuário logado, lido do token) ---
 
 app.MapGet("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
