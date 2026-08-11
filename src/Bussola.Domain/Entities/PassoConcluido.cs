@@ -7,4 +7,7 @@ public class PassoConcluido
     public Guid UsuarioId { get; set; }
     public Guid OnboardingStepId { get; set; }
     public DateTime ConcluidoEm { get; set; } = DateTime.UtcNow;
+
+    // Comprovação opcional do passo: link do PR, um print (URL) ou uma nota. Vazio = sem comprovação.
+    public string Evidencia { get; set; } = string.Empty;
 }

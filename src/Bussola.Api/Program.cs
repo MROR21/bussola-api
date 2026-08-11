@@ -343,10 +343,10 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         return Results.NotFound(new { erro = "Supervisionado não encontrado." });
     }
 
-    var concluidos = (await db.PassosConcluidos
+    var registros = await db.PassosConcluidos
         .Where(p => p.UsuarioId == usuarioId)
-        .Select(p => p.OnboardingStepId)
-        .ToListAsync()).ToHashSet();
+        .ToListAsync();
+    var evidenciaPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.Evidencia);
 
     var steps = await db.OnboardingSteps.OrderBy(s => s.Order).ToListAsync();
     var passos = steps.Select(s => new
@@ -355,7 +355,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         s.Order,
         s.Phase,
         s.Title,
-        Concluido = concluidos.Contains(s.Id),
+        Concluido = evidenciaPorStep.ContainsKey(s.Id),
+        Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
     });
 
     return Results.Ok(new { alvo.Nome, Passos = passos });
@@ -821,14 +822,24 @@ app.MapGet("/users/{id:guid}/progress", async (Guid id, AppDbContext db) =>
    .WithName("GetProgresso");
 
 // Marca um passo como concluído (idempotente).
-app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, AppDbContext db) =>
+app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ConcluirPassoRequest? req, AppDbContext db) =>
 {
-    var jaConcluido = await db.PassosConcluidos
-        .AnyAsync(passo => passo.UsuarioId == id && passo.OnboardingStepId == stepId);
+    var evidencia = req?.Evidencia?.Trim() ?? string.Empty;
+    var registro = await db.PassosConcluidos
+        .FirstOrDefaultAsync(passo => passo.UsuarioId == id && passo.OnboardingStepId == stepId);
 
-    if (!jaConcluido)
+    if (registro is not null)
     {
-        db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId });
+        // Já concluído: só atualiza a comprovação (sem re-notificar a fase).
+        if (registro.Evidencia != evidencia)
+        {
+            registro.Evidencia = evidencia;
+            await db.SaveChangesAsync();
+        }
+    }
+    else
+    {
+        db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId, Evidencia = evidencia });
         await db.SaveChangesAsync();
 
         // Só avisa o gestor (Teams + sino) quando a FASE inteira do passo é concluída.
@@ -876,6 +887,19 @@ app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid st
 })
    .WithName("DesmarcarPasso");
 
+// Comprovação (evidência) de um passo — a tela do passo usa pra pré-preencher o que já foi anexado.
+app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, AppDbContext db) =>
+{
+    var registro = await db.PassosConcluidos
+        .FirstOrDefaultAsync(p => p.UsuarioId == id && p.OnboardingStepId == stepId);
+    return Results.Ok(new
+    {
+        Concluido = registro is not null,
+        Evidencia = registro?.Evidencia ?? string.Empty,
+    });
+})
+   .WithName("GetComprovacaoPasso");
+
 app.Run();
 
 // Corpos de autenticação.
@@ -889,3 +913,6 @@ record TrocarFotoRequest(string? Foto);
 
 // Corpo do salvar-perfil (nivelamento): perfil de skills + squad.
 record SalvarPerfilRequest(Perfil Perfil, Squad Squad);
+
+// Corpo do concluir-passo: comprovação opcional (link do PR, print ou nota).
+record ConcluirPassoRequest(string? Evidencia);
