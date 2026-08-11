@@ -482,6 +482,47 @@ public static class FluxoSeeder
         {
             new()
             {
+                Categoria = "Arquitetura",
+                Titulo = "Arquitetura do sistema",
+                Descricao = "Como o sistema é organizado: multi-repo, back e front.",
+                Conteudo = """
+                ## Arquitetura do sistema
+                Uma visão geral de como o sistema da Agilean é organizado — pra você saber *onde*
+                mexer antes de *como* mexer.
+
+                ## Multi-repositório
+                - **agilean_portal** — o front (React + TypeScript + Vite).
+                - **api** — o back (C# / .NET).
+                - **projects** e **contract** — entram como **submódulos** do `api` (que aponta pra
+                  um commit específico de cada; daí o "bump de submódulo").
+
+                ## Back (C# / .NET)
+                Organizado em **camadas** e no estilo **CQRS** (comandos escrevem, queries leem):
+                - **Query/Command** → **Handler** (a regra) → **Repository** (dados via **Dapper**).
+                - O banco devolve uma **View** (projeção SQL), que o **AutoMapper** converte na
+                  **Response** (o DTO que sai pra API). Fluxo mental: *View (banco) → AutoMapper →
+                  Response (API)*.
+                - Regra de negócio mora no domínio/handler, **não** no controller.
+
+                ## Front (React + TS)
+                - **Design System** próprio em `src/agilean-design-system` — reusar antes de criar.
+                - **Estilo:** Tailwind com tokens **`ads-*`** (tema troca sozinho); sem CSS custom.
+                - **Estado:** **Zustand** (sessão/obra) + **TanStack React Query** (dados do servidor).
+                - **Tabelas:** **AgGrid Enterprise v31** (locale PT) pras grids pesadas.
+                - **Padrão de tela:** `context/` (estado) + `services/` (chamadas tipadas que
+                  retornam `Result<T>` via `api()`) + hooks (`useColumns`, `useNomeDoHook`).
+
+                ## Como se conectam
+                O front chama a API por HTTP; a API lê/escreve via Dapper e devolve Responses. Front
+                e back são **desacoplados** — dá pra evoluir a tela com mock e, na integração, trocar
+                só o corpo do service.
+
+                > Onde mexer: tela/estilo → `agilean_portal`. Regra/dado → `api` (e o submódulo
+                > certo). Na dúvida, o `CLAUDE.md` de cada repo manda.
+                """,
+            },
+            new()
+            {
                 Categoria = "Git & PR",
                 Titulo = "Abrir um PR",
                 Descricao = "Do commit ao pull request no Bitbucket.",
