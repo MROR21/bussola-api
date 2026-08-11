@@ -15,6 +15,10 @@ public class Usuario
     // Hash da senha (PBKDF2 "salt.hash"). Preenchido no cadastro; verificado no login.
     public string SenhaHash { get; set; } = string.Empty;
 
+    // Foto de perfil como data URI base64 (ex.: "data:image/png;base64,..."). Vazio = sem foto
+    // (o front mostra as iniciais). Guardada inline pra não precisar de storage de arquivo.
+    public string Foto { get; set; } = string.Empty;
+
     // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
     public Cargo Cargo { get; set; } = Cargo.Estagiario;
     public Squad Squad { get; set; } = Squad.MaoDeObra;

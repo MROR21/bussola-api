@@ -600,7 +600,7 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
     });
 })
    .WithName("Register");
@@ -633,7 +633,7 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
     });
 })
    .WithName("Login");
@@ -681,12 +681,94 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
         usuario.Cargo,
         usuario.Squad,
         usuario.IsGestor,
+        usuario.Foto,
         usuario.NivelamentoConcluido,
         GestorNome = gestorNome,
         perfil = usuario.ToPerfil(),
     });
 })
    .WithName("GetUsuario");
+
+// --- Perfil / Config (sempre do próprio usuário logado, via claim "sub") ---
+
+// Troca o e-mail do usuário logado (valida formato + unicidade).
+app.MapPut("/perfil/email", async (TrocarEmailRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+    if (!Email.TryCreate(req.Email, out var email))
+    {
+        return Results.BadRequest(new { erro = "Email inválido." });
+    }
+
+    var usuario = await db.Usuarios.FindAsync(userId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    if (email!.Value != usuario.Email.Value && await db.Usuarios.AnyAsync(u => u.Email == email))
+    {
+        return Results.BadRequest(new { erro = "Já existe uma conta com esse e-mail." });
+    }
+
+    usuario.Email = email!;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("TrocarEmail")
+   .RequireAuthorization();
+
+// Troca a senha do usuário logado (confere a atual + valida a nova).
+app.MapPut("/perfil/senha", async (TrocarSenhaRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(userId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    if (!SenhaHasher.Verificar(req.SenhaAtual, usuario.SenhaHash))
+    {
+        return Results.BadRequest(new { erro = "Senha atual incorreta." });
+    }
+    if (string.IsNullOrWhiteSpace(req.NovaSenha) || req.NovaSenha.Length < 6)
+    {
+        return Results.BadRequest(new { erro = "A nova senha precisa de ao menos 6 caracteres." });
+    }
+
+    usuario.SenhaHash = SenhaHasher.Hash(req.NovaSenha);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("TrocarSenha")
+   .RequireAuthorization();
+
+// Define/remove a foto de perfil do usuário logado (data URI base64; vazio remove).
+app.MapPut("/perfil/foto", async (TrocarFotoRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(userId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    var foto = req.Foto ?? string.Empty;
+    // Guarda de tamanho — evita base64 gigante no banco (o front já reduz a imagem antes de enviar).
+    if (foto.Length > 1_500_000)
+    {
+        return Results.BadRequest(new { erro = "Imagem muito grande. Use uma foto menor." });
+    }
+
+    usuario.Foto = foto;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("TrocarFoto")
+   .RequireAuthorization();
 
 // Lista os ids dos passos que o usuário já concluiu.
 app.MapGet("/users/{id:guid}/progress", async (Guid id, AppDbContext db) =>
@@ -745,6 +827,11 @@ app.Run();
 // Corpos de autenticação.
 record LoginRequest(string Email, string Senha);
 record RegisterRequest(string Nome, string Email, string Senha);
+
+// Corpos do perfil/config (do próprio usuário logado).
+record TrocarEmailRequest(string Email);
+record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
+record TrocarFotoRequest(string? Foto);
 
 // Corpo do salvar-perfil (nivelamento): perfil de skills + squad.
 record SalvarPerfilRequest(Perfil Perfil, Squad Squad);
