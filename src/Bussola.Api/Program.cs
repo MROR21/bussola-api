@@ -231,18 +231,36 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
     if (!ja)
     {
         db.FluxosConcluidos.Add(new FluxoConcluido { UsuarioId = userId, FluxoId = fluxoId });
+        await db.SaveChangesAsync();
 
+        // Só avisa o gestor (Teams + sino) quando o MÓDULO inteiro (fluxos visíveis) fecha.
         var usuario = await db.Usuarios.FindAsync(userId);
-        string? msgTeams = null;
         if (usuario?.GestorId is Guid gestorId)
         {
             var fluxo = await db.Fluxos.FindAsync(fluxoId);
-            msgTeams = $"{usuario.Nome} concluiu o fluxo: {fluxo?.Titulo ?? "um fluxo"}.";
-            db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msgTeams });
-        }
+            if (fluxo is not null)
+            {
+                // Fluxos visíveis do módulo pra este usuário (mesma regra do /fluxos/meus).
+                var atribuidos = (await db.FluxosAtribuidos
+                    .Where(a => a.UsuarioId == userId)
+                    .Select(a => a.FluxoId)
+                    .ToListAsync()).ToHashSet();
+                var idsVisiveis = (await db.Fluxos.Where(f => f.Modulo == fluxo.Modulo).ToListAsync())
+                    .Where(f => f.Squad == null || f.Squad == usuario.Squad || atribuidos.Contains(f.Id))
+                    .Select(f => f.Id)
+                    .ToList();
+                var concluidosDoModulo = await db.FluxosConcluidos
+                    .CountAsync(f => f.UsuarioId == userId && idsVisiveis.Contains(f.FluxoId));
 
-        await db.SaveChangesAsync();
-        if (msgTeams is not null) await teams.EnviarAsync(msgTeams);
+                if (idsVisiveis.Count > 0 && concluidosDoModulo >= idsVisiveis.Count)
+                {
+                    var msg = $"{usuario.Nome} concluiu o módulo {fluxo.Modulo}.";
+                    db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = userId });
+                    await db.SaveChangesAsync();
+                    await teams.EnviarAsync(msg);
+                }
+            }
+        }
     }
 
     return Results.NoContent();
@@ -405,9 +423,10 @@ app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, C
     {
         UsuarioId = usuarioId,
         Mensagem = $"{gestorNome} adicionou você como supervisionado.",
+        AutorId = gestorId,
     });
     await db.SaveChangesAsync();
-    await teams.EnviarAsync($"{gestorNome} adicionou {usuario.Nome} como supervisionado.");
+    // Sem Teams aqui: o canal recebe só percurso completo do supervisionado.
     return Results.NoContent();
 })
    .WithName("AddSupervisionado")
@@ -479,9 +498,10 @@ app.MapPost("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Gu
             UsuarioId = usuarioId,
             Mensagem = $"Seu gestor liberou o fluxo: {fluxo.Titulo}.",
             Link = $"/fluxos?destaque={fluxoId}",
+            AutorId = gestorId,
         });
         await db.SaveChangesAsync();
-        await teams.EnviarAsync($"{alvo.Nome} recebeu o fluxo: {fluxo.Titulo}.");
+        // Sem Teams aqui: o canal recebe só percurso completo do supervisionado.
     }
 
     return Results.NoContent();
@@ -531,7 +551,29 @@ app.MapGet("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
         .Take(30)
         .ToListAsync();
 
-    return Results.Ok(itens);
+    // Resolve o autor (nome + foto) das notificações que têm, em lote, pra mostrar o avatar no sino.
+    var autorIds = itens.Where(n => n.AutorId != null).Select(n => n.AutorId!.Value).Distinct().ToList();
+    var autores = await db.Usuarios
+        .Where(u => autorIds.Contains(u.Id))
+        .ToDictionaryAsync(u => u.Id, u => new { u.Nome, u.Foto });
+
+    var resultado = itens.Select(n =>
+    {
+        autores.TryGetValue(n.AutorId ?? Guid.Empty, out var autor);
+        return new
+        {
+            n.Id,
+            n.UsuarioId,
+            n.Mensagem,
+            n.Link,
+            n.Lida,
+            n.CriadaEm,
+            AutorNome = autor?.Nome,
+            AutorFoto = autor?.Foto,
+        };
+    });
+
+    return Results.Ok(resultado);
 })
    .WithName("GetNotificacoes")
    .RequireAuthorization();
@@ -787,19 +829,31 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
     if (!jaConcluido)
     {
         db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId });
+        await db.SaveChangesAsync();
 
-        // Notifica o gestor (se houver) quando o supervisionado avança de fato, dizendo QUAL passo.
+        // Só avisa o gestor (Teams + sino) quando a FASE inteira do passo é concluída.
         var usuario = await db.Usuarios.FindAsync(id);
-        string? msgTeams = null;
         if (usuario?.GestorId is Guid gestorId)
         {
             var step = await db.OnboardingSteps.FindAsync(stepId);
-            msgTeams = $"{usuario.Nome} concluiu: {step?.Title ?? "um passo"}.";
-            db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msgTeams });
-        }
+            if (step is not null)
+            {
+                var idsDaFase = await db.OnboardingSteps
+                    .Where(s => s.Phase == step.Phase)
+                    .Select(s => s.Id)
+                    .ToListAsync();
+                var concluidosDaFase = await db.PassosConcluidos
+                    .CountAsync(p => p.UsuarioId == id && idsDaFase.Contains(p.OnboardingStepId));
 
-        await db.SaveChangesAsync();
-        if (msgTeams is not null) await teams.EnviarAsync(msgTeams);
+                if (idsDaFase.Count > 0 && concluidosDaFase >= idsDaFase.Count)
+                {
+                    var msg = $"{usuario.Nome} concluiu a fase {step.Phase}.";
+                    db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = id });
+                    await db.SaveChangesAsync();
+                    await teams.EnviarAsync(msg);
+                }
+            }
+        }
     }
 
     return Results.NoContent();
