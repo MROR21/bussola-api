@@ -61,6 +61,17 @@ public static class FluxoSeeder
             }
         }
 
+        // Backfill de tag: fluxos de sistema antigos (Categoria "Sistema") recebem a tag/tópico real.
+        var tagPorTitulo = todos.ToDictionary(f => f.Titulo, f => f.Categoria);
+        foreach (var fluxo in existentes.Where(f => f.Categoria == "Sistema"))
+        {
+            if (tagPorTitulo.TryGetValue(fluxo.Titulo, out var tag) && tag != "Sistema")
+            {
+                fluxo.Categoria = tag;
+                alterou = true;
+            }
+        }
+
         // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
         var titulos = existentes.Select(f => f.Titulo).ToHashSet();
         var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
@@ -84,35 +95,37 @@ public static class FluxoSeeder
 
     private static List<Fluxo> Definicoes()
     {
-        var sistemas = new (string Modulo, Squad Squad, (string Titulo, string Descricao)[] Fluxos)[]
+        // Cada fluxo de sistema tem uma TAG (categoria) = o tópico dentro do módulo. Isso agrupa os
+        // fluxos por assunto na tela (Folha, Alocação, Orçamento...), virando um índice do módulo.
+        var sistemas = new (string Modulo, Squad Squad, (string Titulo, string Descricao, string Tag)[] Fluxos)[]
         {
-            (ModuloMdO, Squad.MaoDeObra, new (string, string)[]
+            (ModuloMdO, Squad.MaoDeObra, new (string, string, string)[]
             {
-                ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra."),
-                ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período."),
-                ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha."),
-                ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação."),
-                ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários."),
-                ("Orçamento de mão de obra", "Como o orçamento de MdO é montado."),
-                ("Despesas indiretas", "O que são e como entram no orçamento."),
-                ("Pacotes de trabalho", "Agrupar serviços em pacotes."),
-                ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação."),
-                ("Distribuição automática", "Distribuir valores automaticamente pela equipe."),
-                ("Devolver valor a pagar", "Quando e como devolver um valor a pagar."),
-                ("Custos e relatórios", "Ler os custos consolidados da obra."),
-                ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário."),
+                ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra.", "Visão geral"),
+                ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período.", "Folha"),
+                ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha.", "Folha"),
+                ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação.", "Folha"),
+                ("Distribuição automática", "Distribuir valores automaticamente pela equipe.", "Folha"),
+                ("Devolver valor a pagar", "Quando e como devolver um valor a pagar.", "Folha"),
+                ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação.", "Alocação"),
+                ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários.", "Alocação"),
+                ("Orçamento de mão de obra", "Como o orçamento de MdO é montado.", "Orçamento"),
+                ("Despesas indiretas", "O que são e como entram no orçamento.", "Orçamento"),
+                ("Pacotes de trabalho", "Agrupar serviços em pacotes.", "Orçamento"),
+                ("Custos e relatórios", "Ler os custos consolidados da obra.", "Relatórios"),
+                ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário.", "Equipe"),
             }),
-            (ModuloQQ, Squad.QuizQuality, new (string, string)[]
+            (ModuloQQ, Squad.QuizQuality, new (string, string, string)[]
             {
-                ("Visão geral do Quiz Quality", "O que o squad de qualidade/inspeção faz."),
-                ("Inspeções", "Como criar e conduzir uma inspeção."),
-                ("Relatórios de qualidade", "Ler e exportar os relatórios de qualidade."),
+                ("Visão geral do Quiz Quality", "O que o squad de qualidade/inspeção faz.", "Visão geral"),
+                ("Inspeções", "Como criar e conduzir uma inspeção.", "Inspeção"),
+                ("Relatórios de qualidade", "Ler e exportar os relatórios de qualidade.", "Relatórios"),
             }),
-            (ModuloAgilean, Squad.Agilean, new (string, string)[]
+            (ModuloAgilean, Squad.Agilean, new (string, string, string)[]
             {
-                ("Visão geral do Agilean", "O aplicativo de planejamento da obra."),
-                ("Planejamento", "Montar o planejamento no desktop."),
-                ("Acompanhamento", "Acompanhar o avanço do plano."),
+                ("Visão geral do Agilean", "O aplicativo de planejamento da obra.", "Visão geral"),
+                ("Planejamento", "Montar o planejamento no desktop.", "Planejamento"),
+                ("Acompanhamento", "Acompanhar o avanço do plano.", "Acompanhamento"),
             }),
         };
 
@@ -120,14 +133,14 @@ public static class FluxoSeeder
         var ordem = 1;
         foreach (var (modulo, squad, fluxos) in sistemas)
         {
-            foreach (var (titulo, descricao) in fluxos)
+            foreach (var (titulo, descricao, tag) in fluxos)
             {
                 lista.Add(new Fluxo
                 {
                     Order = ordem++,
                     Modulo = modulo,
                     Squad = squad,
-                    Categoria = "Sistema",
+                    Categoria = tag,
                     Titulo = titulo,
                     Descricao = descricao,
                     Conteudo = Conteudos.GetValueOrDefault(titulo, StubSistema(titulo)),
