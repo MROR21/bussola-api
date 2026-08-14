@@ -121,6 +121,11 @@ app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "bussola-api" }))
    .WithName("Health");
 
+// Fases com significado próprio na trilha: a do squad (montada a partir dos fluxos, não semeada
+// como passo) e a final, que só libera quando todo o resto está concluído.
+const string FaseConhecaOSistema = "Conheça o sistema";
+const string FasePrimeiroCard = "Primeiro Card";
+
 // Lista os passos de onboarding, ordenados. O AppDbContext é injetado pelo ASP.NET.
 app.MapGet("/onboarding/steps", async (AppDbContext db) =>
     await db.OnboardingSteps
@@ -128,28 +133,54 @@ app.MapGet("/onboarding/steps", async (AppDbContext db) =>
         .ToListAsync())
    .WithName("GetOnboardingSteps");
 
-// Monta a trilha para um perfil: cada passo com a profundidade recomendada (essencial/resumo).
-// Stateless — o perfil vem no corpo, nada é salvo (persistir vem quando existir Usuário).
-app.MapPost("/onboarding/trail", async (Perfil perfil, AppDbContext db) =>
+// Monta a trilha do usuário logado: os passos (com a profundidade recomendada) MAIS os fluxos do
+// squad dele, como uma fase própria logo antes do Primeiro Card. Conhecer o sistema do squad é
+// parte do onboarding; depois de concluído, esses mesmos fluxos seguem acessíveis no Guia pelo
+// sistema (que é aberto a todos). O item traz `Tipo` pro front saber se navega pro passo ou pro fluxo.
+app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, AppDbContext db) =>
 {
-    var steps = await db.OnboardingSteps.OrderBy(step => step.Order).ToListAsync();
-
-    var trail = steps.Select(step => new
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
     {
-        step.Id,
-        step.Order,
-        step.Phase,
-        step.Title,
-        step.Description,
-        step.IsCompanySpecific,
-        step.SkillArea,
-        step.Conteudo,
-        RecommendedDepth = TrailPlanner.DepthFor(step, perfil),
-    });
+        return Results.Unauthorized();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(userId);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    var steps = await db.OnboardingSteps.OrderBy(step => step.Order).ToListAsync();
+    var fluxosDoSquad = await db.Fluxos
+        .Where(fluxo => fluxo.Squad == usuario.Squad)
+        .OrderBy(fluxo => fluxo.Order)
+        .ToListAsync();
+
+    var trail = new List<TrailItemView>();
+
+    void AdicionarFluxosDoSquad() => trail.AddRange(fluxosDoSquad.Select(fluxo => new TrailItemView(
+        fluxo.Id, fluxo.Order, FaseConhecaOSistema, fluxo.Titulo, fluxo.Descricao,
+        true, SkillArea.None, fluxo.Conteudo, StepDepth.Essencial, "fluxo")));
+
+    var inseriuFluxos = false;
+    foreach (var step in steps)
+    {
+        if (!inseriuFluxos && step.Phase == FasePrimeiroCard)
+        {
+            AdicionarFluxosDoSquad();
+            inseriuFluxos = true;
+        }
+
+        trail.Add(new TrailItemView(
+            step.Id, step.Order, step.Phase, step.Title, step.Description,
+            step.IsCompanySpecific, step.SkillArea, step.Conteudo,
+            TrailPlanner.DepthFor(step, perfil), "passo"));
+    }
+
+    // Sem a fase do Primeiro Card (base customizada), os fluxos entram no fim.
+    if (!inseriuFluxos) AdicionarFluxosDoSquad();
 
     return Results.Ok(trail);
 })
-   .WithName("GetOnboardingTrail");
+   .WithName("GetOnboardingTrail")
+   .RequireAuthorization();
 
 // Um passo específico (com o conteúdo em Markdown). Usado na página de detalhe do passo.
 app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
@@ -163,10 +194,13 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // --- Fluxos (Referência viva) ---
 
-// Lista todos os fluxos, ordenados. A busca é feita no front (poucos itens).
+// Lista todos os fluxos, ordenados. O Guia pelo sistema é aberto a QUALQUER colaborador logado —
+// não filtra por squad nem por atribuição (decisão de produto: o repositório é de todos; o que é
+// específico do squad entra na jornada, não como restrição de acesso).
 app.MapGet("/fluxos", async (AppDbContext db) =>
     await db.Fluxos.OrderBy(fluxo => fluxo.Order).ToListAsync())
-   .WithName("GetFluxos");
+   .WithName("GetFluxos")
+   .RequireAuthorization();
 
 // Um fluxo específico (com o conteúdo em Markdown).
 app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
@@ -177,30 +211,6 @@ app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
         : Results.Ok(fluxo);
 })
    .WithName("GetFluxo");
-
-// Fluxos visíveis do usuário logado: do squad dele + os sem squad (Básico) + os atribuídos pelo gestor.
-app.MapGet("/fluxos/meus", async (ClaimsPrincipal user, AppDbContext db) =>
-{
-    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
-    {
-        return Results.Unauthorized();
-    }
-
-    var usuario = await db.Usuarios.FindAsync(userId);
-    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
-
-    var atribuidos = (await db.FluxosAtribuidos
-        .Where(a => a.UsuarioId == userId)
-        .Select(a => a.FluxoId)
-        .ToListAsync()).ToHashSet();
-
-    var todos = await db.Fluxos.OrderBy(f => f.Order).ToListAsync();
-    var visiveis = todos.Where(f => f.Squad == null || f.Squad == usuario.Squad || atribuidos.Contains(f.Id));
-
-    return Results.Ok(visiveis);
-})
-   .WithName("GetMeusFluxos")
-   .RequireAuthorization();
 
 // Ids dos fluxos que o usuário logado já concluiu.
 app.MapGet("/fluxos/concluidos", async (ClaimsPrincipal user, AppDbContext db) =>
@@ -926,3 +936,17 @@ record SalvarPerfilRequest(Perfil Perfil, Squad Squad);
 
 // Corpo do concluir-passo: comprovação opcional (link do PR, print ou nota).
 record ConcluirPassoRequest(string? Evidencia);
+
+// Um item da trilha. Unifica passo de onboarding e fluxo do squad no mesmo formato — `Tipo`
+// ("passo" | "fluxo") diz ao front pra onde navegar e onde marcar a conclusão.
+record TrailItemView(
+    Guid Id,
+    int Order,
+    string Phase,
+    string Title,
+    string Description,
+    bool IsCompanySpecific,
+    SkillArea SkillArea,
+    string Conteudo,
+    StepDepth RecommendedDepth,
+    string Tipo);
