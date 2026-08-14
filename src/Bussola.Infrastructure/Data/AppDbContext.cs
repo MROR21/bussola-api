@@ -11,7 +11,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PassoConcluido> PassosConcluidos => Set<PassoConcluido>();
     public DbSet<Fluxo> Fluxos => Set<Fluxo>();
     public DbSet<Notificacao> Notificacoes => Set<Notificacao>();
-    public DbSet<FluxoAtribuido> FluxosAtribuidos => Set<FluxoAtribuido>();
     public DbSet<FluxoConcluido> FluxosConcluidos => Set<FluxoConcluido>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -30,11 +29,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // Um passo só pode ser concluído uma vez por usuário.
         modelBuilder.Entity<PassoConcluido>()
             .HasIndex(passo => new { passo.UsuarioId, passo.OnboardingStepId })
-            .IsUnique();
-
-        // Um fluxo só pode ser atribuído uma vez a cada usuário.
-        modelBuilder.Entity<FluxoAtribuido>()
-            .HasIndex(atrib => new { atrib.FluxoId, atrib.UsuarioId })
             .IsUnique();
 
         // Um fluxo só pode ser concluído uma vez por usuário.

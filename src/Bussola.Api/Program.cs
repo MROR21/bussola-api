@@ -250,19 +250,16 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
             var fluxo = await db.Fluxos.FindAsync(fluxoId);
             if (fluxo is not null)
             {
-                // Fluxos visíveis do módulo pra este usuário (mesma regra do /fluxos/meus).
-                var atribuidos = (await db.FluxosAtribuidos
-                    .Where(a => a.UsuarioId == userId)
-                    .Select(a => a.FluxoId)
-                    .ToListAsync()).ToHashSet();
-                var idsVisiveis = (await db.Fluxos.Where(f => f.Modulo == fluxo.Modulo).ToListAsync())
-                    .Where(f => f.Squad == null || f.Squad == usuario.Squad || atribuidos.Contains(f.Id))
+                // O módulo inteiro = todos os fluxos dele (o guia é aberto, não há mais recorte
+                // por squad/atribuição).
+                var idsDoModulo = await db.Fluxos
+                    .Where(f => f.Modulo == fluxo.Modulo)
                     .Select(f => f.Id)
-                    .ToList();
+                    .ToListAsync();
                 var concluidosDoModulo = await db.FluxosConcluidos
-                    .CountAsync(f => f.UsuarioId == userId && idsVisiveis.Contains(f.FluxoId));
+                    .CountAsync(f => f.UsuarioId == userId && idsDoModulo.Contains(f.FluxoId));
 
-                if (idsVisiveis.Count > 0 && concluidosDoModulo >= idsVisiveis.Count)
+                if (idsDoModulo.Count > 0 && concluidosDoModulo >= idsDoModulo.Count)
                 {
                     var msg = $"{usuario.Nome} concluiu o módulo {fluxo.Modulo}.";
                     db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = userId });
@@ -374,7 +371,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
    .WithName("GetProgressoSupervisionado")
    .RequireAuthorization("Gestor");
 
-// Fluxos que o supervisionado vê (squad + Básico + atribuídos), com a flag de concluído.
+// Todos os fluxos do guia com a flag de concluído do supervisionado. `DoSquad` marca os que fazem
+// parte do onboarding dele (os do squad); o resto é consulta livre.
 app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
 {
     if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
@@ -388,15 +386,19 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
         return Results.NotFound(new { erro = "Supervisionado não encontrado." });
     }
 
-    var atribuidos = (await db.FluxosAtribuidos
-        .Where(a => a.UsuarioId == usuarioId).Select(a => a.FluxoId).ToListAsync()).ToHashSet();
     var concluidos = (await db.FluxosConcluidos
         .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
 
     var todos = await db.Fluxos.OrderBy(f => f.Order).ToListAsync();
     var visiveis = todos
-        .Where(f => f.Squad == null || f.Squad == alvo.Squad || atribuidos.Contains(f.Id))
-        .Select(f => new { f.Id, f.Titulo, f.Modulo, Concluido = concluidos.Contains(f.Id) });
+        .Select(f => new
+        {
+            f.Id,
+            f.Titulo,
+            f.Modulo,
+            Concluido = concluidos.Contains(f.Id),
+            DoSquad = f.Squad == alvo.Squad,
+        });
 
     return Results.Ok(visiveis);
 })
@@ -461,90 +463,6 @@ app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId,
     return Results.NoContent();
 })
    .WithName("RemoveSupervisionado")
-   .RequireAuthorization("Gestor");
-
-// Atribuições de fluxo dos supervisionados do gestor (qual supervisionado tem qual fluxo).
-app.MapGet("/gestor/fluxos/atribuicoes", async (ClaimsPrincipal user, AppDbContext db) =>
-{
-    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
-    {
-        return Results.Unauthorized();
-    }
-
-    var supervisionados = await db.Usuarios.Where(u => u.GestorId == gestorId).ToListAsync();
-    var nomePorId = supervisionados.ToDictionary(u => u.Id, u => u.Nome);
-    var ids = nomePorId.Keys.ToList();
-
-    var atribuicoes = await db.FluxosAtribuidos.Where(a => ids.Contains(a.UsuarioId)).ToListAsync();
-    var resultado = atribuicoes.Select(a => new { a.FluxoId, a.UsuarioId, Nome = nomePorId[a.UsuarioId] });
-
-    return Results.Ok(resultado);
-})
-   .WithName("GetAtribuicoes")
-   .RequireAuthorization("Gestor");
-
-// Atribui (libera) um fluxo a um supervisionado do gestor. Idempotente + notifica o supervisionado.
-app.MapPost("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Guid fluxoId, Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
-{
-    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
-    {
-        return Results.Unauthorized();
-    }
-
-    var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
-    {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
-    }
-
-    var fluxo = await db.Fluxos.FindAsync(fluxoId);
-    if (fluxo is null) return Results.NotFound(new { erro = "Fluxo não encontrado." });
-
-    var jaTem = await db.FluxosAtribuidos.AnyAsync(a => a.FluxoId == fluxoId && a.UsuarioId == usuarioId);
-    if (!jaTem)
-    {
-        db.FluxosAtribuidos.Add(new FluxoAtribuido { FluxoId = fluxoId, UsuarioId = usuarioId });
-        db.Notificacoes.Add(new Notificacao
-        {
-            UsuarioId = usuarioId,
-            Mensagem = $"Seu gestor liberou o fluxo: {fluxo.Titulo}.",
-            Link = $"/fluxos?destaque={fluxoId}",
-            AutorId = gestorId,
-        });
-        await db.SaveChangesAsync();
-        // Sem Teams aqui: o canal recebe só percurso completo do supervisionado.
-    }
-
-    return Results.NoContent();
-})
-   .WithName("AtribuirFluxo")
-   .RequireAuthorization("Gestor");
-
-// Desvincula (remove) um fluxo antes atribuído a um supervisionado do gestor.
-app.MapDelete("/gestor/fluxos/{fluxoId:guid}/atribuir/{usuarioId:guid}", async (Guid fluxoId, Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
-{
-    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
-    {
-        return Results.Unauthorized();
-    }
-
-    var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
-    {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
-    }
-
-    var atrib = await db.FluxosAtribuidos
-        .FirstOrDefaultAsync(a => a.FluxoId == fluxoId && a.UsuarioId == usuarioId);
-    if (atrib is not null)
-    {
-        db.FluxosAtribuidos.Remove(atrib);
-        await db.SaveChangesAsync();
-    }
-
-    return Results.NoContent();
-})
-   .WithName("DesvincularFluxo")
    .RequireAuthorization("Gestor");
 
 // --- Notificações (do usuário logado, lido do token) ---
