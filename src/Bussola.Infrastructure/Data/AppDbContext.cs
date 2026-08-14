@@ -12,6 +12,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Fluxo> Fluxos => Set<Fluxo>();
     public DbSet<Notificacao> Notificacoes => Set<Notificacao>();
     public DbSet<FluxoConcluido> FluxosConcluidos => Set<FluxoConcluido>();
+    public DbSet<Fase> Fases => Set<Fase>();
+    public DbSet<Modulo> Modulos => Set<Modulo>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,5 +37,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<FluxoConcluido>()
             .HasIndex(fc => new { fc.UsuarioId, fc.FluxoId })
             .IsUnique();
+
+        // Nome de fase/módulo é único — evita duplicata confusa quando o admin cria/renomeia.
+        modelBuilder.Entity<Fase>()
+            .HasIndex(f => f.Nome)
+            .IsUnique();
+
+        modelBuilder.Entity<Modulo>()
+            .HasIndex(m => m.Nome)
+            .IsUnique();
+
+        // Restrict (não Cascade, que seria o padrão do EF pra FK obrigatória): apagar uma Fase ou
+        // Módulo com passos/fluxos vinculados deve falhar no banco — segunda trava além da checagem
+        // que o endpoint de admin já faz, não apagar o conteúdo em cascata.
+        modelBuilder.Entity<OnboardingStep>()
+            .HasOne(s => s.Fase)
+            .WithMany()
+            .HasForeignKey(s => s.FaseId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Fluxo>()
+            .HasOne(f => f.Modulo)
+            .WithMany()
+            .HasForeignKey(f => f.ModuloId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

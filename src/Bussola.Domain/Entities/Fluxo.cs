@@ -8,7 +8,8 @@ public class Fluxo
     public Guid Id { get; set; } = Guid.NewGuid();
     public int Order { get; set; }
     // Módulo = agrupamento por squad/área ("Mão de Obra", "Básico do dev"). Organiza a Referência.
-    public string Modulo { get; set; } = string.Empty;
+    public Guid ModuloId { get; set; }
+    public virtual Modulo Modulo { get; set; } = null!;
     // Squad ao qual o fluxo pertence. null = vale pra todos (ex.: "Básico do dev").
     public Squad? Squad { get; set; }
     public string Categoria { get; set; } = string.Empty;

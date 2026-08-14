@@ -20,7 +20,10 @@ public static class FluxoSeeder
 
     public static async Task SeedAsync(AppDbContext db)
     {
-        var todos = Definicoes();
+        // Módulos já foram semeados pela migration (SeedFaseAndModuloData) — aqui só referenciamos
+        // pelo nome, nunca criamos Módulo por conta própria (isso é papel do admin agora).
+        var moduloPorNome = await db.Modulos.ToDictionaryAsync(m => m.Nome, m => m.Id);
+        var todos = Definicoes(moduloPorNome);
 
         if (!await db.Fluxos.AnyAsync())
         {
@@ -29,18 +32,11 @@ public static class FluxoSeeder
             return;
         }
 
-        var existentes = await db.Fluxos.ToListAsync();
+        var existentes = await db.Fluxos.Include(f => f.Modulo).ToListAsync();
         var alterou = false;
 
-        // Antigos sem módulo (seed do #4) → viram "Básico do dev".
-        foreach (var fluxo in existentes.Where(f => string.IsNullOrWhiteSpace(f.Modulo)))
-        {
-            fluxo.Modulo = ModuloBasico;
-            alterou = true;
-        }
-
         // Fluxos do módulo Mão de Obra sem squad definido → recebem o squad MdO.
-        foreach (var fluxo in existentes.Where(f => f.Modulo == ModuloMdO && f.Squad == null))
+        foreach (var fluxo in existentes.Where(f => f.Modulo.Nome == ModuloMdO && f.Squad == null))
         {
             fluxo.Squad = Squad.MaoDeObra;
             alterou = true;
@@ -93,7 +89,7 @@ public static class FluxoSeeder
         _({MarcadorStub} — aqui entra o passo a passo da tela, com o vídeo do sistema acima.)_
         """;
 
-    private static List<Fluxo> Definicoes()
+    private static List<Fluxo> Definicoes(Dictionary<string, Guid> moduloPorNome)
     {
         // Cada fluxo de sistema tem uma TAG (categoria) = o tópico dentro do módulo. Isso agrupa os
         // fluxos por assunto na tela (Folha, Alocação, Orçamento...), virando um índice do módulo.
@@ -138,7 +134,7 @@ public static class FluxoSeeder
                 lista.Add(new Fluxo
                 {
                     Order = ordem++,
-                    Modulo = modulo,
+                    ModuloId = moduloPorNome[modulo],
                     Squad = squad,
                     Categoria = tag,
                     Titulo = titulo,
@@ -149,7 +145,7 @@ public static class FluxoSeeder
             }
         }
 
-        lista.AddRange(BasicoDoDev(ref ordem));
+        lista.AddRange(BasicoDoDev(ref ordem, moduloPorNome[ModuloBasico]));
         return lista;
     }
 
@@ -489,7 +485,7 @@ public static class FluxoSeeder
     };
 
     // Fluxos genéricos do dia a dia do dev (os que já existiam no #4), agora no módulo "Básico do dev".
-    private static IEnumerable<Fluxo> BasicoDoDev(ref int ordem)
+    private static IEnumerable<Fluxo> BasicoDoDev(ref int ordem, Guid moduloBasicoId)
     {
         var basicos = new List<Fluxo>
         {
@@ -686,7 +682,7 @@ public static class FluxoSeeder
         foreach (var fluxo in basicos)
         {
             fluxo.Order = ordem++;
-            fluxo.Modulo = ModuloBasico;
+            fluxo.ModuloId = moduloBasicoId;
             fluxo.VideoUrl = string.Empty;
         }
         return basicos;

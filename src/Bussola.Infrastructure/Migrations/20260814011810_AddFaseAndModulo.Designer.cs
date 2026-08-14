@@ -3,6 +3,7 @@ using System;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bussola.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814011810_AddFaseAndModulo")]
+    partial class AddFaseAndModulo
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -37,9 +40,6 @@ namespace Bussola.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Nome")
-                        .IsUnique();
-
                     b.ToTable("Fases");
                 });
 
@@ -61,7 +61,11 @@ namespace Bussola.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("ModuloId")
+                    b.Property<string>("Modulo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ModuloId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Order")
@@ -123,9 +127,6 @@ namespace Bussola.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Nome")
-                        .IsUnique();
-
                     b.ToTable("Modulos");
                 });
 
@@ -174,7 +175,7 @@ namespace Bussola.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("FaseId")
+                    b.Property<Guid?>("FaseId")
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsCompanySpecific")
@@ -182,6 +183,10 @@ namespace Bussola.Infrastructure.Migrations
 
                     b.Property<int>("Order")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("SkillArea")
                         .HasColumnType("integer");
@@ -286,22 +291,18 @@ namespace Bussola.Infrastructure.Migrations
 
             modelBuilder.Entity("Bussola.Domain.Entities.Fluxo", b =>
                 {
-                    b.HasOne("Bussola.Domain.Entities.Modulo", "Modulo")
+                    b.HasOne("Bussola.Domain.Entities.Modulo", "ModuloRef")
                         .WithMany()
-                        .HasForeignKey("ModuloId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .HasForeignKey("ModuloId");
 
-                    b.Navigation("Modulo");
+                    b.Navigation("ModuloRef");
                 });
 
             modelBuilder.Entity("Bussola.Domain.Entities.OnboardingStep", b =>
                 {
                     b.HasOne("Bussola.Domain.Entities.Fase", "Fase")
                         .WithMany()
-                        .HasForeignKey("FaseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .HasForeignKey("FaseId");
 
                     b.Navigation("Fase");
                 });

@@ -126,10 +126,22 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "bussola-a
 const string FaseConhecaOSistema = "Conheça o sistema";
 const string FasePrimeiroCard = "Primeiro Card";
 
-// Lista os passos de onboarding, ordenados. O AppDbContext é injetado pelo ASP.NET.
+// Lista os passos de onboarding, ordenados. `Phase` é projetada a partir da entidade Fase (FK) —
+// mantém o mesmo formato de resposta de sempre pro front, mesmo com o modelo normalizado por baixo.
 app.MapGet("/onboarding/steps", async (AppDbContext db) =>
     await db.OnboardingSteps
         .OrderBy(step => step.Order)
+        .Select(step => new
+        {
+            step.Id,
+            step.Order,
+            Phase = step.Fase.Nome,
+            step.Title,
+            step.Description,
+            step.IsCompanySpecific,
+            step.SkillArea,
+            step.Conteudo,
+        })
         .ToListAsync())
    .WithName("GetOnboardingSteps");
 
@@ -147,7 +159,7 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, App
     var usuario = await db.Usuarios.FindAsync(userId);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
-    var steps = await db.OnboardingSteps.OrderBy(step => step.Order).ToListAsync();
+    var steps = await db.OnboardingSteps.Include(step => step.Fase).OrderBy(step => step.Order).ToListAsync();
     var fluxosDoSquad = await db.Fluxos
         .Where(fluxo => fluxo.Squad == usuario.Squad)
         .OrderBy(fluxo => fluxo.Order)
@@ -162,14 +174,14 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, App
     var inseriuFluxos = false;
     foreach (var step in steps)
     {
-        if (!inseriuFluxos && step.Phase == FasePrimeiroCard)
+        if (!inseriuFluxos && step.Fase.Nome == FasePrimeiroCard)
         {
             AdicionarFluxosDoSquad();
             inseriuFluxos = true;
         }
 
         trail.Add(new TrailItemView(
-            step.Id, step.Order, step.Phase, step.Title, step.Description,
+            step.Id, step.Order, step.Fase.Nome, step.Title, step.Description,
             step.IsCompanySpecific, step.SkillArea, step.Conteudo,
             TrailPlanner.DepthFor(step, perfil), "passo"));
     }
@@ -185,7 +197,20 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, App
 // Um passo específico (com o conteúdo em Markdown). Usado na página de detalhe do passo.
 app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 {
-    var step = await db.OnboardingSteps.FindAsync(id);
+    var step = await db.OnboardingSteps
+        .Where(s => s.Id == id)
+        .Select(s => new
+        {
+            s.Id,
+            s.Order,
+            Phase = s.Fase.Nome,
+            s.Title,
+            s.Description,
+            s.IsCompanySpecific,
+            s.SkillArea,
+            s.Conteudo,
+        })
+        .FirstOrDefaultAsync();
     return step is null
         ? Results.NotFound(new { erro = "Passo não encontrado." })
         : Results.Ok(step);
@@ -198,14 +223,42 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 // não filtra por squad nem por atribuição (decisão de produto: o repositório é de todos; o que é
 // específico do squad entra na jornada, não como restrição de acesso).
 app.MapGet("/fluxos", async (AppDbContext db) =>
-    await db.Fluxos.OrderBy(fluxo => fluxo.Order).ToListAsync())
+    await db.Fluxos
+        .OrderBy(fluxo => fluxo.Order)
+        .Select(fluxo => new
+        {
+            fluxo.Id,
+            fluxo.Order,
+            Modulo = fluxo.Modulo.Nome,
+            fluxo.Squad,
+            fluxo.Categoria,
+            fluxo.Titulo,
+            fluxo.Descricao,
+            fluxo.Conteudo,
+            fluxo.VideoUrl,
+        })
+        .ToListAsync())
    .WithName("GetFluxos")
    .RequireAuthorization();
 
 // Um fluxo específico (com o conteúdo em Markdown).
 app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
 {
-    var fluxo = await db.Fluxos.FindAsync(id);
+    var fluxo = await db.Fluxos
+        .Where(f => f.Id == id)
+        .Select(f => new
+        {
+            f.Id,
+            f.Order,
+            Modulo = f.Modulo.Nome,
+            f.Squad,
+            f.Categoria,
+            f.Titulo,
+            f.Descricao,
+            f.Conteudo,
+            f.VideoUrl,
+        })
+        .FirstOrDefaultAsync();
     return fluxo is null
         ? Results.NotFound(new { erro = "Fluxo não encontrado." })
         : Results.Ok(fluxo);
@@ -247,13 +300,13 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
         var usuario = await db.Usuarios.FindAsync(userId);
         if (usuario?.GestorId is Guid gestorId)
         {
-            var fluxo = await db.Fluxos.FindAsync(fluxoId);
+            var fluxo = await db.Fluxos.Include(f => f.Modulo).FirstOrDefaultAsync(f => f.Id == fluxoId);
             if (fluxo is not null)
             {
                 // O módulo inteiro = todos os fluxos dele (o guia é aberto, não há mais recorte
                 // por squad/atribuição).
                 var idsDoModulo = await db.Fluxos
-                    .Where(f => f.Modulo == fluxo.Modulo)
+                    .Where(f => f.ModuloId == fluxo.ModuloId)
                     .Select(f => f.Id)
                     .ToListAsync();
                 var concluidosDoModulo = await db.FluxosConcluidos
@@ -261,7 +314,7 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
 
                 if (idsDoModulo.Count > 0 && concluidosDoModulo >= idsDoModulo.Count)
                 {
-                    var msg = $"{usuario.Nome} concluiu o módulo {fluxo.Modulo}.";
+                    var msg = $"{usuario.Nome} concluiu o módulo {fluxo.Modulo.Nome}.";
                     db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = userId });
                     await db.SaveChangesAsync();
                     await teams.EnviarAsync(msg);
@@ -355,12 +408,12 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         .ToListAsync();
     var evidenciaPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.Evidencia);
 
-    var steps = await db.OnboardingSteps.OrderBy(s => s.Order).ToListAsync();
+    var steps = await db.OnboardingSteps.Include(s => s.Fase).OrderBy(s => s.Order).ToListAsync();
     var passos = steps.Select(s => new
     {
         s.Id,
         s.Order,
-        s.Phase,
+        Phase = s.Fase.Nome,
         s.Title,
         Concluido = evidenciaPorStep.ContainsKey(s.Id),
         Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
@@ -389,13 +442,13 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
     var concluidos = (await db.FluxosConcluidos
         .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
 
-    var todos = await db.Fluxos.OrderBy(f => f.Order).ToListAsync();
+    var todos = await db.Fluxos.Include(f => f.Modulo).OrderBy(f => f.Order).ToListAsync();
     var visiveis = todos
         .Select(f => new
         {
             f.Id,
             f.Titulo,
-            f.Modulo,
+            Modulo = f.Modulo.Nome,
             Concluido = concluidos.Contains(f.Id),
             DoSquad = f.Squad == alvo.Squad,
         });
@@ -463,6 +516,253 @@ app.MapDelete("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId,
     return Results.NoContent();
 })
    .WithName("RemoveSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// --- Admin: CRUD de fases, passos, módulos e fluxos (reaproveita a policy "Gestor" como admin —
+// sem 3º papel por ora). Torna a Jornada e o Guia editáveis pela tela em vez de fixos no seeder. ---
+
+app.MapGet("/admin/fases", async (AppDbContext db) =>
+    await db.Fases.OrderBy(f => f.Order).ToListAsync())
+   .WithName("AdminGetFases")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/fases", async (FaseRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome da fase." });
+
+    var fase = new Fase { Nome = req.Nome.Trim(), Order = req.Order };
+    db.Fases.Add(fase);
+    await db.SaveChangesAsync();
+    return Results.Ok(fase);
+})
+   .WithName("AdminCreateFase")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/fases/{id:guid}", async (Guid id, FaseRequest req, AppDbContext db) =>
+{
+    var fase = await db.Fases.FindAsync(id);
+    if (fase is null) return Results.NotFound(new { erro = "Fase não encontrada." });
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome da fase." });
+
+    fase.Nome = req.Nome.Trim();
+    fase.Order = req.Order;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdateFase")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/fases/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    if (await db.OnboardingSteps.AnyAsync(s => s.FaseId == id))
+    {
+        return Results.BadRequest(new { erro = "Essa fase tem passos vinculados — mova ou apague os passos primeiro." });
+    }
+
+    var fase = await db.Fases.FindAsync(id);
+    if (fase is not null)
+    {
+        db.Fases.Remove(fase);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteFase")
+   .RequireAuthorization("Gestor");
+
+app.MapGet("/admin/modulos", async (AppDbContext db) =>
+    await db.Modulos.OrderBy(m => m.Order).ToListAsync())
+   .WithName("AdminGetModulos")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/modulos", async (ModuloRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
+
+    var modulo = new Modulo { Nome = req.Nome.Trim(), Order = req.Order };
+    db.Modulos.Add(modulo);
+    await db.SaveChangesAsync();
+    return Results.Ok(modulo);
+})
+   .WithName("AdminCreateModulo")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/modulos/{id:guid}", async (Guid id, ModuloRequest req, AppDbContext db) =>
+{
+    var modulo = await db.Modulos.FindAsync(id);
+    if (modulo is null) return Results.NotFound(new { erro = "Módulo não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
+
+    modulo.Nome = req.Nome.Trim();
+    modulo.Order = req.Order;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdateModulo")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    if (await db.Fluxos.AnyAsync(f => f.ModuloId == id))
+    {
+        return Results.BadRequest(new { erro = "Esse módulo tem fluxos vinculados — mova ou apague os fluxos primeiro." });
+    }
+
+    var modulo = await db.Modulos.FindAsync(id);
+    if (modulo is not null)
+    {
+        db.Modulos.Remove(modulo);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteModulo")
+   .RequireAuthorization("Gestor");
+
+// Lista os passos com FaseId explícito (a colaborador-facing /onboarding/steps continua igual,
+// pensada pra exibição, não edição).
+app.MapGet("/admin/passos", async (AppDbContext db) =>
+    await db.OnboardingSteps.OrderBy(s => s.Order).Select(s => new
+    {
+        s.Id,
+        s.Order,
+        s.FaseId,
+        s.Title,
+        s.Description,
+        s.IsCompanySpecific,
+        s.SkillArea,
+        s.Conteudo,
+    }).ToListAsync())
+   .WithName("AdminGetPassos")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/passos", async (PassoRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Title)) return Results.BadRequest(new { erro = "Informe o título do passo." });
+    if (!await db.Fases.AnyAsync(f => f.Id == req.FaseId)) return Results.BadRequest(new { erro = "Fase inválida." });
+
+    var passo = new OnboardingStep
+    {
+        FaseId = req.FaseId,
+        Order = req.Order,
+        Title = req.Title.Trim(),
+        Description = req.Description,
+        IsCompanySpecific = req.IsCompanySpecific,
+        SkillArea = req.SkillArea,
+        Conteudo = req.Conteudo,
+    };
+    db.OnboardingSteps.Add(passo);
+    await db.SaveChangesAsync();
+    return Results.Ok(passo);
+})
+   .WithName("AdminCreatePasso")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/passos/{id:guid}", async (Guid id, PassoRequest req, AppDbContext db) =>
+{
+    var passo = await db.OnboardingSteps.FindAsync(id);
+    if (passo is null) return Results.NotFound(new { erro = "Passo não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Title)) return Results.BadRequest(new { erro = "Informe o título do passo." });
+    if (!await db.Fases.AnyAsync(f => f.Id == req.FaseId)) return Results.BadRequest(new { erro = "Fase inválida." });
+
+    passo.FaseId = req.FaseId;
+    passo.Order = req.Order;
+    passo.Title = req.Title.Trim();
+    passo.Description = req.Description;
+    passo.IsCompanySpecific = req.IsCompanySpecific;
+    passo.SkillArea = req.SkillArea;
+    passo.Conteudo = req.Conteudo;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdatePasso")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/passos/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var passo = await db.OnboardingSteps.FindAsync(id);
+    if (passo is not null)
+    {
+        db.OnboardingSteps.Remove(passo);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeletePasso")
+   .RequireAuthorization("Gestor");
+
+// Lista os fluxos com ModuloId explícito (o /fluxos colaborador-facing continua igual).
+app.MapGet("/admin/fluxos", async (AppDbContext db) =>
+    await db.Fluxos.OrderBy(f => f.Order).Select(f => new
+    {
+        f.Id,
+        f.Order,
+        f.ModuloId,
+        f.Squad,
+        f.Categoria,
+        f.Titulo,
+        f.Descricao,
+        f.Conteudo,
+        f.VideoUrl,
+    }).ToListAsync())
+   .WithName("AdminGetFluxos")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/fluxos", async (FluxoRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Titulo)) return Results.BadRequest(new { erro = "Informe o título do fluxo." });
+    if (!await db.Modulos.AnyAsync(m => m.Id == req.ModuloId)) return Results.BadRequest(new { erro = "Módulo inválido." });
+
+    var fluxo = new Fluxo
+    {
+        ModuloId = req.ModuloId,
+        Squad = req.Squad,
+        Categoria = req.Categoria,
+        Order = req.Order,
+        Titulo = req.Titulo.Trim(),
+        Descricao = req.Descricao,
+        Conteudo = req.Conteudo,
+        VideoUrl = req.VideoUrl,
+    };
+    db.Fluxos.Add(fluxo);
+    await db.SaveChangesAsync();
+    return Results.Ok(fluxo);
+})
+   .WithName("AdminCreateFluxo")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/fluxos/{id:guid}", async (Guid id, FluxoRequest req, AppDbContext db) =>
+{
+    var fluxo = await db.Fluxos.FindAsync(id);
+    if (fluxo is null) return Results.NotFound(new { erro = "Fluxo não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Titulo)) return Results.BadRequest(new { erro = "Informe o título do fluxo." });
+    if (!await db.Modulos.AnyAsync(m => m.Id == req.ModuloId)) return Results.BadRequest(new { erro = "Módulo inválido." });
+
+    fluxo.ModuloId = req.ModuloId;
+    fluxo.Squad = req.Squad;
+    fluxo.Categoria = req.Categoria;
+    fluxo.Order = req.Order;
+    fluxo.Titulo = req.Titulo.Trim();
+    fluxo.Descricao = req.Descricao;
+    fluxo.Conteudo = req.Conteudo;
+    fluxo.VideoUrl = req.VideoUrl;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdateFluxo")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var fluxo = await db.Fluxos.FindAsync(id);
+    if (fluxo is not null)
+    {
+        db.Fluxos.Remove(fluxo);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteFluxo")
    .RequireAuthorization("Gestor");
 
 // --- Notificações (do usuário logado, lido do token) ---
@@ -784,11 +1084,11 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
         var usuario = await db.Usuarios.FindAsync(id);
         if (usuario?.GestorId is Guid gestorId)
         {
-            var step = await db.OnboardingSteps.FindAsync(stepId);
+            var step = await db.OnboardingSteps.Include(s => s.Fase).FirstOrDefaultAsync(s => s.Id == stepId);
             if (step is not null)
             {
                 var idsDaFase = await db.OnboardingSteps
-                    .Where(s => s.Phase == step.Phase)
+                    .Where(s => s.FaseId == step.FaseId)
                     .Select(s => s.Id)
                     .ToListAsync();
                 var concluidosDaFase = await db.PassosConcluidos
@@ -796,7 +1096,7 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
 
                 if (idsDaFase.Count > 0 && concluidosDaFase >= idsDaFase.Count)
                 {
-                    var msg = $"{usuario.Nome} concluiu a fase {step.Phase}.";
+                    var msg = $"{usuario.Nome} concluiu a fase {step.Fase.Nome}.";
                     db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = id });
                     await db.SaveChangesAsync();
                     await teams.EnviarAsync(msg);
@@ -868,3 +1168,24 @@ record TrailItemView(
     string Conteudo,
     StepDepth RecommendedDepth,
     string Tipo);
+
+// Corpos do CRUD de admin (fases/passos/módulos/fluxos).
+record FaseRequest(string Nome, int Order);
+record ModuloRequest(string Nome, int Order);
+record PassoRequest(
+    Guid FaseId,
+    int Order,
+    string Title,
+    string Description,
+    bool IsCompanySpecific,
+    SkillArea SkillArea,
+    string Conteudo);
+record FluxoRequest(
+    Guid ModuloId,
+    Squad? Squad,
+    string Categoria,
+    int Order,
+    string Titulo,
+    string Descricao,
+    string Conteudo,
+    string VideoUrl);

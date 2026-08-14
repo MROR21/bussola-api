@@ -4,7 +4,8 @@ public class OnboardingStep
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public int Order { get; set; }
-    public string Phase { get; set; } = string.Empty;
+    public Guid FaseId { get; set; }
+    public virtual Fase Fase { get; set; } = null!;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool IsCompanySpecific { get; set; }
