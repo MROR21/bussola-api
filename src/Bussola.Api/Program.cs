@@ -618,6 +618,16 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
     {
         return Results.BadRequest(new { erro = "Email inválido." });
     }
+
+    // Cadastro é restrito ao domínio da empresa — pedido do gestor (2026-08-13): evita acesso de
+    // e-mails aleatórios. Vazio no appsettings desliga a checagem (dev sem essa config).
+    var dominioPermitido = config["Auth:DominioPermitido"];
+    if (!string.IsNullOrWhiteSpace(dominioPermitido)
+        && !email!.Value.EndsWith($"@{dominioPermitido}", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { erro = $"Cadastro disponível apenas para e-mails @{dominioPermitido}." });
+    }
+
     if (string.IsNullOrWhiteSpace(req.Senha) || req.Senha.Length < 6)
     {
         return Results.BadRequest(new { erro = "A senha precisa de ao menos 6 caracteres." });
