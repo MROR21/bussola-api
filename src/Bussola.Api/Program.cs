@@ -920,8 +920,13 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
    .WithName("Login");
 
 // Salva o nivelamento (Perfil) no usuário.
-app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, AppDbContext db) =>
+app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
@@ -938,12 +943,18 @@ app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, A
 
     return Results.NoContent();
 })
-   .WithName("SalvarPerfil");
+   .WithName("SalvarPerfil")
+   .RequireAuthorization();
 
 // Dados do usuário: perfil salvo + se já nivelou. O front usa no login pra decidir se pula o
 // questionário e monta a trilha direto.
-app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
+app.MapGet("/users/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
@@ -968,7 +979,8 @@ app.MapGet("/users/{id:guid}", async (Guid id, AppDbContext db) =>
         perfil = usuario.ToPerfil(),
     });
 })
-   .WithName("GetUsuario");
+   .WithName("GetUsuario")
+   .RequireAuthorization();
 
 // --- Perfil / Config (sempre do próprio usuário logado, via claim "sub") ---
 
@@ -1052,16 +1064,30 @@ app.MapPut("/perfil/foto", async (TrocarFotoRequest req, ClaimsPrincipal user, A
    .RequireAuthorization();
 
 // Lista os ids dos passos que o usuário já concluiu.
-app.MapGet("/users/{id:guid}/progress", async (Guid id, AppDbContext db) =>
-    await db.PassosConcluidos
+app.MapGet("/users/{id:guid}/progress", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
+    var concluidos = await db.PassosConcluidos
         .Where(passo => passo.UsuarioId == id)
         .Select(passo => passo.OnboardingStepId)
-        .ToListAsync())
-   .WithName("GetProgresso");
+        .ToListAsync();
+    return Results.Ok(concluidos);
+})
+   .WithName("GetProgresso")
+   .RequireAuthorization();
 
 // Marca um passo como concluído (idempotente).
-app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ConcluirPassoRequest? req, AppDbContext db) =>
+app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ConcluirPassoRequest? req, ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
     var evidencia = req?.Evidencia?.Trim() ?? string.Empty;
     var registro = await db.PassosConcluidos
         .FirstOrDefaultAsync(passo => passo.UsuarioId == id && passo.OnboardingStepId == stepId);
@@ -1107,11 +1133,17 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
 
     return Results.NoContent();
 })
-   .WithName("ConcluirPasso");
+   .WithName("ConcluirPasso")
+   .RequireAuthorization();
 
 // Desmarca um passo (toggle).
-app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, AppDbContext db) =>
+app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
     var passo = await db.PassosConcluidos
         .FirstOrDefaultAsync(p => p.UsuarioId == id && p.OnboardingStepId == stepId);
 
@@ -1123,11 +1155,17 @@ app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid st
 
     return Results.NoContent();
 })
-   .WithName("DesmarcarPasso");
+   .WithName("DesmarcarPasso")
+   .RequireAuthorization();
 
 // Comprovação (evidência) de um passo — a tela do passo usa pra pré-preencher o que já foi anexado.
-app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, AppDbContext db) =>
+app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
     var registro = await db.PassosConcluidos
         .FirstOrDefaultAsync(p => p.UsuarioId == id && p.OnboardingStepId == stepId);
     return Results.Ok(new
@@ -1136,7 +1174,8 @@ app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepI
         Evidencia = registro?.Evidencia ?? string.Empty,
     });
 })
-   .WithName("GetComprovacaoPasso");
+   .WithName("GetComprovacaoPasso")
+   .RequireAuthorization();
 
 app.Run();
 
