@@ -913,6 +913,41 @@ app.MapPost("/notificacoes/ler", async (ClaimsPrincipal user, AppDbContext db) =
    .WithName("LerNotificacoes")
    .RequireAuthorization();
 
+// Apaga uma notificação do usuário logado (silencioso se não existir ou for de outra pessoa —
+// mesmo padrão de delete idempotente do resto do app).
+app.MapDelete("/notificacoes/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var notificacao = await db.Notificacoes
+        .FirstOrDefaultAsync(n => n.Id == id && n.UsuarioId == userId);
+    if (notificacao is not null)
+    {
+        db.Notificacoes.Remove(notificacao);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("ApagarNotificacao")
+   .RequireAuthorization();
+
+// Apaga todas as notificações do usuário logado (o botão "Limpar tudo" do sino).
+app.MapDelete("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    await db.Notificacoes.Where(n => n.UsuarioId == userId).ExecuteDeleteAsync();
+    return Results.NoContent();
+})
+   .WithName("ApagarTodasNotificacoes")
+   .RequireAuthorization();
+
 // --- Auth + Usuário + Progresso ---
 
 // Login demo: get-or-create por email + emite JWT (token com expiração).
