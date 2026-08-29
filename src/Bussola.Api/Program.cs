@@ -619,6 +619,87 @@ app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
    .WithName("AdminDeleteModulo")
    .RequireAuthorization("Gestor");
 
+// Lista todo mundo (não só os supervisionados de quem chama) — a tela "Usuários" do admin usa isso
+// pra decidir quem promover/demover.
+app.MapGet("/admin/usuarios", async (AppDbContext db) =>
+    await db.Usuarios
+        .OrderBy(u => u.Nome)
+        .Select(u => new
+        {
+            u.Id,
+            u.Nome,
+            Email = u.Email.Value,
+            u.Cargo,
+            u.Squad,
+            u.IsGestor,
+        })
+        .ToListAsync())
+   .WithName("AdminGetUsuarios")
+   .RequireAuthorization("Gestor");
+
+// Promove/demove um usuário a gestor. Sempre uma ação explícita de outro gestor (nunca a própria
+// pessoa) — e nunca demove quem ainda tem supervisionados vinculados (mesmo padrão de guarda que
+// Fase/Módulo já usam: primeiro desvincula, depois demove).
+app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRequest req, ClaimsPrincipal caller, AppDbContext db) =>
+{
+    if (!Guid.TryParse(caller.FindFirstValue("sub"), out var callerId) || callerId == id)
+    {
+        return Results.BadRequest(new { erro = "Você não pode mudar seu próprio papel de gestor." });
+    }
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    if (!req.IsGestor && await db.Usuarios.AnyAsync(u => u.GestorId == id))
+    {
+        return Results.BadRequest(new { erro = "Esse usuário ainda tem supervisionados vinculados — remova-os primeiro." });
+    }
+
+    usuario.IsGestor = req.IsGestor;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminPromoverUsuario")
+   .RequireAuthorization("Gestor");
+
+// Lista/cadastra/remove e-mails pré-autorizados a virar gestor no cadastro (ver /auth/register).
+app.MapGet("/admin/emails-autorizados", async (AppDbContext db) =>
+    await db.EmailsAutorizadosGestor.OrderBy(e => e.Email).ToListAsync())
+   .WithName("AdminGetEmailsAutorizados")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/emails-autorizados", async (EmailAutorizadoRequest req, AppDbContext db) =>
+{
+    if (!Email.TryCreate(req.Email, out var email))
+    {
+        return Results.BadRequest(new { erro = "Email inválido." });
+    }
+    if (await db.EmailsAutorizadosGestor.AnyAsync(e => e.Email == email!.Value))
+    {
+        return Results.BadRequest(new { erro = "Esse e-mail já está na lista." });
+    }
+
+    var autorizado = new EmailAutorizadoGestor { Email = email!.Value };
+    db.EmailsAutorizadosGestor.Add(autorizado);
+    await db.SaveChangesAsync();
+    return Results.Ok(autorizado);
+})
+   .WithName("AdminCreateEmailAutorizado")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/emails-autorizados/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var autorizado = await db.EmailsAutorizadosGestor.FindAsync(id);
+    if (autorizado is not null)
+    {
+        db.EmailsAutorizadosGestor.Remove(autorizado);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteEmailAutorizado")
+   .RequireAuthorization("Gestor");
+
 // Lista os passos com FaseId explícito (a colaborador-facing /onboarding/steps continua igual,
 // pensada pra exibição, não edição).
 app.MapGet("/admin/passos", async (AppDbContext db) =>
@@ -866,12 +947,15 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
     }
 
     var gestores = config.GetSection("Gestores").Get<string[]>() ?? [];
+    var ehGestorPorConfig = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
+    var ehGestorPorLista = await db.EmailsAutorizadosGestor
+        .AnyAsync(e => e.Email == email!.Value);
     var usuario = new Usuario
     {
         Nome = req.Nome.Trim(),
         Email = email!,
         SenhaHash = SenhaHasher.Hash(req.Senha),
-        IsGestor = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase)),
+        IsGestor = ehGestorPorConfig || ehGestorPorLista,
     };
     db.Usuarios.Add(usuario);
     await db.SaveChangesAsync();
@@ -900,12 +984,14 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
         return Results.Json(new { erro = "E-mail ou senha inválidos." }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    // Reaplica o papel de gestor conforme o appsettings (caso a lista tenha mudado).
+    // Concede o papel de gestor se o e-mail está na lista do appsettings (config só ADICIONA o
+    // papel, nunca remove — demover é sempre uma ação explícita de um gestor, nunca automática no
+    // login; senão uma promoção manual feita pelo sistema seria desfeita no próximo login).
     var gestores = config.GetSection("Gestores").Get<string[]>() ?? [];
-    var ehGestor = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
-    if (usuario.IsGestor != ehGestor)
+    var ehGestorPorConfig = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
+    if (ehGestorPorConfig && !usuario.IsGestor)
     {
-        usuario.IsGestor = ehGestor;
+        usuario.IsGestor = true;
         await db.SaveChangesAsync();
     }
 
@@ -1211,6 +1297,8 @@ record TrailItemView(
 // Corpos do CRUD de admin (fases/passos/módulos/fluxos).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
+record PromoverUsuarioRequest(bool IsGestor);
+record EmailAutorizadoRequest(string Email);
 record PassoRequest(
     Guid FaseId,
     int Order,

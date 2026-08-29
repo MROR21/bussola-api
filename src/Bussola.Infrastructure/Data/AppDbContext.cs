@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FluxoConcluido> FluxosConcluidos => Set<FluxoConcluido>();
     public DbSet<Fase> Fases => Set<Fase>();
     public DbSet<Modulo> Modulos => Set<Modulo>();
+    public DbSet<EmailAutorizadoGestor> EmailsAutorizadosGestor => Set<EmailAutorizadoGestor>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<Modulo>()
             .HasIndex(m => m.Nome)
+            .IsUnique();
+
+        // E-mail pré-autorizado é único — sem duplicata na lista.
+        modelBuilder.Entity<EmailAutorizadoGestor>()
+            .HasIndex(e => e.Email)
             .IsUnique();
 
         // Restrict (não Cascade, que seria o padrão do EF pra FK obrigatória): apagar uma Fase ou
