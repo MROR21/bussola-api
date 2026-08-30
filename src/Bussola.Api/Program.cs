@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using Bussola.Api.Auth;
@@ -1045,6 +1046,75 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
 })
    .WithName("Login");
 
+// Login via Microsoft (Entra ID/Microsoft 365, o workspace da Agilean). O front autentica com
+// MSAL.js e manda aqui o ACCESS TOKEN (escopo Graph "User.Read"). Em vez de validar o JWT
+// localmente (issuer/JWKS de app multi-tenant é complexidade desnecessária pra esse porte), a
+// validação é DELEGADA ao próprio Graph: se o token for real e válido, o Graph responde com o
+// perfil; se não for, dá 401 — não precisamos confiar em mais nada além disso.
+app.MapPost("/auth/microsoft", async (
+    MicrosoftLoginRequest req, AppDbContext db, TokenService tokens, IConfiguration config,
+    IHttpClientFactory httpClientFactory) =>
+{
+    var http = httpClientFactory.CreateClient();
+    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", req.AccessToken);
+    var respostaGraph = await http.GetAsync("https://graph.microsoft.com/v1.0/me");
+    if (!respostaGraph.IsSuccessStatusCode)
+    {
+        return Results.Json(
+            new { erro = "Não foi possível validar o login com a Microsoft." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var perfilGraph = await respostaGraph.Content.ReadFromJsonAsync<MicrosoftGraphMe>(
+        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    // `mail` fica em branco em algumas contas — `userPrincipalName` é o identificador de login
+    // de verdade da conta corporativa e normalmente tem o mesmo formato de e-mail.
+    var emailBruto = perfilGraph?.Mail ?? perfilGraph?.UserPrincipalName;
+    if (string.IsNullOrWhiteSpace(emailBruto) || !Email.TryCreate(emailBruto, out var email))
+    {
+        return Results.BadRequest(new { erro = "Sua conta da Microsoft não retornou um e-mail válido." });
+    }
+
+    var dominioPermitido = config["Auth:DominioPermitido"];
+    if (!string.IsNullOrWhiteSpace(dominioPermitido)
+        && !email!.Value.EndsWith($"@{dominioPermitido}", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { erro = $"Login disponível apenas para e-mails @{dominioPermitido}." });
+    }
+
+    var gestoresCfg = config.GetSection("Gestores").Get<string[]>() ?? [];
+    var ehGestorPorConfig = gestoresCfg.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
+
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
+    if (usuario is null)
+    {
+        var ehGestorPorLista = await db.EmailsAutorizadosGestor.AnyAsync(e => e.Email == email!.Value);
+        usuario = new Usuario
+        {
+            Nome = perfilGraph?.DisplayName?.Trim() is { Length: > 0 } nome ? nome : email!.Value,
+            Email = email!,
+            IsGestor = ehGestorPorConfig || ehGestorPorLista,
+        };
+        db.Usuarios.Add(usuario);
+        await db.SaveChangesAsync();
+    }
+    else if (ehGestorPorConfig && !usuario.IsGestor)
+    {
+        // Mesma regra do login por senha: config só ADICIONA o papel, nunca remove.
+        usuario.IsGestor = true;
+        await db.SaveChangesAsync();
+    }
+
+    var (tokenBussola, expiraEmMicrosoft) = tokens.Emitir(usuario);
+    return Results.Ok(new
+    {
+        token = tokenBussola,
+        expiraEm = expiraEmMicrosoft,
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
+    });
+})
+   .WithName("LoginMicrosoft");
+
 // Salva o nivelamento (Perfil) no usuário.
 app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, ClaimsPrincipal user, AppDbContext db) =>
 {
@@ -1308,6 +1378,10 @@ app.Run();
 // Corpos de autenticação.
 record LoginRequest(string Email, string Senha);
 record RegisterRequest(string Nome, string Email, string Senha);
+record MicrosoftLoginRequest(string AccessToken);
+
+// Só os campos que a gente usa da resposta do Microsoft Graph `GET /me`.
+record MicrosoftGraphMe(string? Mail, string? UserPrincipalName, string? DisplayName);
 
 // Corpos do perfil/config (do próprio usuário logado).
 record TrocarEmailRequest(string Email);
