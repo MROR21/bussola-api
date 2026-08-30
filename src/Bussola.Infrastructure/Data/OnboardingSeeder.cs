@@ -204,15 +204,15 @@ public static class OnboardingSeeder
             new OnboardingStep { Order = 2, FaseId = IdDaFase("Ambientação"), Title = "Seu squad e os outros", Description = "Mão de Obra, Quiz Quality e Agilean (desktop) — o que cada um faz, integrantes e seu gestor.", IsCompanySpecific = true, Conteudo = Conteudos[2] },
             new OnboardingStep { Order = 3, FaseId = IdDaFase("Ambientação"), Title = "Ferramentas & acessos", Description = "Instale VS Code e Visual Studio; configure o e-mail Agilean; confirme acesso ao Jira, Bitbucket e Teams.", IsCompanySpecific = true, Conteudo = Conteudos[3] },
 
-            // Fase B — Ambiente técnico
-            new OnboardingStep { Order = 4, FaseId = IdDaFase("Ambiente técnico"), Title = "Entenda os repositórios", Description = "agilean_portal (front), api (back), projects/contract (submódulos) e como se conectam.", IsCompanySpecific = true, Conteudo = Conteudos[4] },
-            new OnboardingStep { Order = 5, FaseId = IdDaFase("Ambiente técnico"), Title = "Clone os repositórios", Description = "git clone --recurse-submodules dos repos do seu squad.", IsCompanySpecific = false, SkillArea = SkillArea.Git, Conteudo = Conteudos[5] },
-            new OnboardingStep { Order = 6, FaseId = IdDaFase("Ambiente técnico"), Title = "Suba o ambiente", Description = "Instale as dependências e rode o front (Vite) e o back (dotnet).", IsCompanySpecific = false, Conteudo = Conteudos[6] },
+            // Fase B — Padrões
+            new OnboardingStep { Order = 4, FaseId = IdDaFase("Padrões"), Title = "Padrões de código", Description = "CLAUDE.md: tokens ads-*, data-cy, sem CSS custom, máx 400 linhas, reusar o Design System.", IsCompanySpecific = true, Conteudo = Conteudos[7] },
+            new OnboardingStep { Order = 5, FaseId = IdDaFase("Padrões"), Title = "Fluxo git multi-repo", Description = "Branch por card → rebase no support → bump do submódulo no api → force-with-lease.", IsCompanySpecific = true, SkillArea = SkillArea.Git, Conteudo = Conteudos[8] },
+            new OnboardingStep { Order = 6, FaseId = IdDaFase("Padrões"), Title = "Jira & Bitbucket na prática", Description = "Pegar card, transições, abrir PR, review e reviewer.", IsCompanySpecific = true, Conteudo = Conteudos[9] },
 
-            // Fase C — Padrões
-            new OnboardingStep { Order = 7, FaseId = IdDaFase("Padrões"), Title = "Padrões de código", Description = "CLAUDE.md: tokens ads-*, data-cy, sem CSS custom, máx 400 linhas, reusar o Design System.", IsCompanySpecific = true, Conteudo = Conteudos[7] },
-            new OnboardingStep { Order = 8, FaseId = IdDaFase("Padrões"), Title = "Fluxo git multi-repo", Description = "Branch por card → rebase no support → bump do submódulo no api → force-with-lease.", IsCompanySpecific = true, SkillArea = SkillArea.Git, Conteudo = Conteudos[8] },
-            new OnboardingStep { Order = 9, FaseId = IdDaFase("Padrões"), Title = "Jira & Bitbucket na prática", Description = "Pegar card, transições, abrir PR, review e reviewer.", IsCompanySpecific = true, Conteudo = Conteudos[9] },
+            // Fase C — Ambiente técnico
+            new OnboardingStep { Order = 7, FaseId = IdDaFase("Ambiente técnico"), Title = "Entenda os repositórios", Description = "agilean_portal (front), api (back), projects/contract (submódulos) e como se conectam.", IsCompanySpecific = true, Conteudo = Conteudos[4] },
+            new OnboardingStep { Order = 8, FaseId = IdDaFase("Ambiente técnico"), Title = "Clone os repositórios", Description = "git clone --recurse-submodules dos repos do seu squad.", IsCompanySpecific = false, SkillArea = SkillArea.Git, Conteudo = Conteudos[5] },
+            new OnboardingStep { Order = 9, FaseId = IdDaFase("Ambiente técnico"), Title = "Suba o ambiente", Description = "Instale as dependências e rode o front (Vite) e o back (dotnet).", IsCompanySpecific = false, Conteudo = Conteudos[6] },
 
             // Fase D — Primeiro Card
             new OnboardingStep { Order = 10, FaseId = IdDaFase("Primeiro Card"), Title = "Pegue um card starter", Description = "Um good-first-issue simples (ex.: tirar a tag de beta de funcionalidades que não são mais beta).", IsCompanySpecific = true, Conteudo = Conteudos[10] },

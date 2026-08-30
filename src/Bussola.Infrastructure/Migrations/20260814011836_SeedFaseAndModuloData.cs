@@ -23,8 +23,8 @@ namespace Bussola.Infrastructure.Migrations
             migrationBuilder.Sql($@"
                 INSERT INTO ""Fases"" (""Id"", ""Nome"", ""Order"") VALUES
                 ('{ambientacao}', 'Ambientação', 1),
-                ('{ambienteTecnico}', 'Ambiente técnico', 2),
-                ('{padroes}', 'Padrões', 3),
+                ('{padroes}', 'Padrões', 2),
+                ('{ambienteTecnico}', 'Ambiente técnico', 3),
                 ('{primeiroCard}', 'Primeiro Card', 4);
             ");
 
