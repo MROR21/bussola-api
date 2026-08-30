@@ -128,9 +128,12 @@ const string FasePrimeiroCard = "Primeiro Card";
 
 // Lista os passos de onboarding, ordenados. `Phase` é projetada a partir da entidade Fase (FK) —
 // mantém o mesmo formato de resposta de sempre pro front, mesmo com o modelo normalizado por baixo.
+// Ordena por Fase.Order primeiro (é o que as setas ▲▼ do Admin mexem) e só depois pelo Order do
+// próprio passo dentro da fase — reordenar Fase no Admin muda de verdade a sequência da Jornada.
 app.MapGet("/onboarding/steps", async (AppDbContext db) =>
     await db.OnboardingSteps
-        .OrderBy(step => step.Order)
+        .OrderBy(step => step.Fase.Order)
+        .ThenBy(step => step.Order)
         .Select(step => new
         {
             step.Id,
@@ -159,7 +162,8 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, App
     var usuario = await db.Usuarios.FindAsync(userId);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
 
-    var steps = await db.OnboardingSteps.Include(step => step.Fase).OrderBy(step => step.Order).ToListAsync();
+    var steps = await db.OnboardingSteps.Include(step => step.Fase)
+        .OrderBy(step => step.Fase.Order).ThenBy(step => step.Order).ToListAsync();
     var fluxosDoSquad = await db.Fluxos
         .Where(fluxo => fluxo.Squad == usuario.Squad)
         .OrderBy(fluxo => fluxo.Order)
@@ -408,7 +412,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         .ToListAsync();
     var evidenciaPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.Evidencia);
 
-    var steps = await db.OnboardingSteps.Include(s => s.Fase).OrderBy(s => s.Order).ToListAsync();
+    var steps = await db.OnboardingSteps.Include(s => s.Fase)
+        .OrderBy(s => s.Fase.Order).ThenBy(s => s.Order).ToListAsync();
     var passos = steps.Select(s => new
     {
         s.Id,
