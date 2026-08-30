@@ -68,6 +68,20 @@ public static class FluxoSeeder
             }
         }
 
+        // Backfill de vídeo: fluxos sem vídeo recebem o vídeo curado (por título) — só preenche o
+        // que estiver vazio, nunca sobrescreve um vídeo já editado à mão pelo Admin.
+        var videoPorTitulo = todos.ToDictionary(f => f.Titulo, f => f.VideoUrl);
+        foreach (var fluxo in existentes)
+        {
+            if (string.IsNullOrWhiteSpace(fluxo.VideoUrl)
+                && videoPorTitulo.TryGetValue(fluxo.Titulo, out var video)
+                && !string.IsNullOrWhiteSpace(video))
+            {
+                fluxo.VideoUrl = video;
+                alterou = true;
+            }
+        }
+
         // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
         var titulos = existentes.Select(f => f.Titulo).ToHashSet();
         var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
@@ -140,7 +154,7 @@ public static class FluxoSeeder
                     Titulo = titulo,
                     Descricao = descricao,
                     Conteudo = Conteudos.GetValueOrDefault(titulo, StubSistema(titulo)),
-                    VideoUrl = string.Empty,
+                    VideoUrl = VideoUrls.GetValueOrDefault(titulo, string.Empty),
                 });
             }
         }
@@ -148,6 +162,14 @@ public static class FluxoSeeder
         lista.AddRange(BasicoDoDev(ref ordem, moduloPorNome[ModuloBasico]));
         return lista;
     }
+
+    // Vídeo (embed) por título de fluxo — o link de "Inserir/Embed" do SharePoint/Stream, não o de
+    // compartilhamento comum (esse último não roda dentro de um <iframe> de outro site).
+    private static readonly Dictionary<string, string> VideoUrls = new()
+    {
+        ["Visão geral da Mão de Obra"] =
+            "https://agileantech-my.sharepoint.com/personal/rh_agilean_com_br/_layouts/15/embed.aspx?UniqueId=679fd2f1-7a44-4ec8-96ec-26eb4c4b3290&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+    };
 
     // Conteúdo (Markdown) curado dos fluxos de sistema, por título.
     // MdO: referência de verdade (o que a tela faz, conceitos-chave, pegadinhas reais dos cards).
