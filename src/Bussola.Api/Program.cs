@@ -301,7 +301,8 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
         db.FluxosConcluidos.Add(new FluxoConcluido { UsuarioId = userId, FluxoId = fluxoId });
         await db.SaveChangesAsync();
 
-        // Só avisa o gestor (Teams + sino) quando o MÓDULO inteiro (fluxos visíveis) fecha.
+        // Só avisa o gestor (só no sino — Teams fica reservado pro Primeiro Card, ver endpoint
+        // de progresso) quando o MÓDULO inteiro (fluxos visíveis) fecha.
         var usuario = await db.Usuarios.FindAsync(userId);
         if (usuario?.GestorId is Guid gestorId)
         {
@@ -319,10 +320,11 @@ app.MapPost("/fluxos/{fluxoId:guid}/concluir", async (Guid fluxoId, ClaimsPrinci
 
                 if (idsDoModulo.Count > 0 && concluidosDoModulo >= idsDoModulo.Count)
                 {
+                    // Teams fica só pro marco de liberar o Primeiro Card (decisão do Miguel
+                    // 2026-09-05) — conclusão de módulo do Guia continua avisando só no sino.
                     var msg = $"{usuario.Nome} concluiu o módulo {fluxo.Modulo.Nome}.";
                     db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = userId });
                     await db.SaveChangesAsync();
-                    await teams.EnviarAsync(msg);
                 }
             }
         }
@@ -1302,7 +1304,8 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
         db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId, Evidencia = evidencia });
         await db.SaveChangesAsync();
 
-        // Só avisa o gestor (Teams + sino) quando a FASE inteira do passo é concluída.
+        // Só avisa o gestor (sino sempre; Teams só na fase "Primeiro Card") quando a FASE
+        // inteira do passo é concluída.
         var usuario = await db.Usuarios.FindAsync(id);
         if (usuario?.GestorId is Guid gestorId)
         {
@@ -1321,7 +1324,13 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
                     var msg = $"{usuario.Nome} concluiu a fase {step.Fase.Nome}.";
                     db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = id });
                     await db.SaveChangesAsync();
-                    await teams.EnviarAsync(msg);
+
+                    // Teams fica só pro marco de liberar o Primeiro Card (decisão do Miguel
+                    // 2026-09-05) — as demais fases avisam só no sino, sem barulho no Teams.
+                    if (step.Fase.Nome == "Primeiro Card")
+                    {
+                        await teams.EnviarAsync(msg);
+                    }
                 }
             }
         }
