@@ -114,11 +114,17 @@ public static class OnboardingSeeder
         ## Ferramentas & acessos
         Deixe o básico pronto antes de mexer em código:
 
-        1. Instale o **VS Code** (front) e o **Visual Studio** (back .NET).
-        2. Configure seu **e-mail Agilean**.
-        3. Confirme acesso a **Jira** (cards), **Bitbucket** (código) e **Teams** (comunicação).
+        **Organizacionais**
+        - **E-mail Agilean** configurado.
+        - Acesso ao **Teams** (comunicação) e ao **Agilean Flow** (plataforma interna da empresa).
 
-        > Bitbucket e Jira usam a mesma conta Atlassian. Se faltar acesso, fale com o gestor.
+        **Técnicos**
+        - Instale o **VS Code** (front) e o **Visual Studio** (back .NET).
+        - Acesso à conta **Atlassian** (Jira e Bitbucket usam a mesma conta).
+        - Acesso ao **Azure DevOps**.
+        - Login no **Bússola** (esta plataforma) já funcionando.
+
+        > Se faltar algum desses acessos, fale com o gestor.
         """,
         [7] = """
         ## Pagamento
@@ -305,7 +311,7 @@ public static class OnboardingSeeder
             new OnboardingStep { Order = 3, FaseId = IdDaFase("Ambientação"), Title = "Cultura e valores", Description = "Os valores do time e os comportamentos esperados na Agilean.", IsCompanySpecific = true, Conteudo = Conteudos[3] },
             new OnboardingStep { Order = 4, FaseId = IdDaFase("Ambientação"), Title = "Liderança e squads", Description = "Quem lidera a empresa, e Mão de Obra, Quiz Quality e Agilean (desktop) — o que cada squad faz.", IsCompanySpecific = true, Conteudo = Conteudos[4] },
             new OnboardingStep { Order = 5, FaseId = IdDaFase("Ambientação"), Title = "Comunicação e rituais", Description = "Feedz, Teams, reunião de liderança, Conecta mensal e o período de experiência.", IsCompanySpecific = true, Conteudo = Conteudos[5] },
-            new OnboardingStep { Order = 6, FaseId = IdDaFase("Ambientação"), Title = "Ferramentas & acessos", Description = "Instale VS Code e Visual Studio; configure o e-mail Agilean; confirme acesso ao Jira, Bitbucket e Teams.", IsCompanySpecific = true, Conteudo = Conteudos[6] },
+            new OnboardingStep { Order = 6, FaseId = IdDaFase("Ambientação"), Title = "Ferramentas & acessos", Description = "Instale VS Code e Visual Studio; confirme acesso ao e-mail, Teams, Agilean Flow, Atlassian, Azure DevOps e Bússola.", IsCompanySpecific = true, Conteudo = Conteudos[6] },
             new OnboardingStep { Order = 7, FaseId = IdDaFase("Ambientação"), Title = "RH, DP e benefícios", Description = "Pagamento, plano de saúde, treinamentos e quem chamar no RH.", IsCompanySpecific = true, Conteudo = Conteudos[7] },
 
             // Fase B — Padrões
