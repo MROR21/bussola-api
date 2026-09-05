@@ -425,7 +425,7 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
     });
 
-    return Results.Ok(new { alvo.Nome, Passos = passos });
+    return Results.Ok(new { alvo.Nome, alvo.Cargo, Passos = passos });
 })
    .WithName("GetProgressoSupervisionado")
    .RequireAuthorization("Gestor");
