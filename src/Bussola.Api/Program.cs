@@ -640,6 +640,7 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
             u.Cargo,
             u.Squad,
             u.IsGestor,
+            u.Ativo,
         })
         .ToListAsync())
    .WithName("AdminGetUsuarios")
@@ -668,6 +669,25 @@ app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRe
     return Results.NoContent();
 })
    .WithName("AdminPromoverUsuario")
+   .RequireAuthorization("Gestor");
+
+// Revoga/reativa o acesso de um usuário (ex.: funcionário desligado). Mesma regra de guarda do
+// papel de gestor: nunca a própria pessoa se revoga.
+app.MapPut("/admin/usuarios/{id:guid}/ativo", async (Guid id, AtivarUsuarioRequest req, ClaimsPrincipal caller, AppDbContext db) =>
+{
+    if (!Guid.TryParse(caller.FindFirstValue("sub"), out var callerId) || callerId == id)
+    {
+        return Results.BadRequest(new { erro = "Você não pode revogar o próprio acesso." });
+    }
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    usuario.Ativo = req.Ativo;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminAtivarUsuario")
    .RequireAuthorization("Gestor");
 
 // Lista/cadastra/remove e-mails pré-autorizados a virar gestor no cadastro (ver /auth/register).
@@ -1022,7 +1042,9 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     }
 
     var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
-    if (usuario is null || !SenhaHasher.Verificar(req.Senha, usuario.SenhaHash))
+    // Mesma mensagem genérica pra senha errada e conta desativada — não vaza que a conta existe
+    // mas foi revogada (ex.: funcionário desligado).
+    if (usuario is null || !usuario.Ativo || !SenhaHasher.Verificar(req.Senha, usuario.SenhaHash))
     {
         return Results.Json(new { erro = "E-mail ou senha inválidos." }, statusCode: StatusCodes.Status401Unauthorized);
     }
@@ -1105,6 +1127,15 @@ app.MapPost("/auth/microsoft", async (
         // Mesma regra do login por senha: config só ADICIONA o papel, nunca remove.
         usuario.IsGestor = true;
         await db.SaveChangesAsync();
+    }
+
+    // Conta desativada (ex.: funcionário desligado) — recusa mesmo com um access token válido da
+    // Microsoft, já que o desligamento pode não ter sido processado a tempo do lado do TI.
+    if (!usuario.Ativo)
+    {
+        return Results.Json(
+            new { erro = "Sua conta não tem mais acesso ao Bússola." },
+            statusCode: StatusCodes.Status401Unauthorized);
     }
 
     var (tokenBussola, expiraEmMicrosoft) = tokens.Emitir(usuario);
@@ -1421,6 +1452,7 @@ record TrailItemView(
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
 record PromoverUsuarioRequest(bool IsGestor);
+record AtivarUsuarioRequest(bool Ativo);
 record EmailAutorizadoRequest(string Email);
 record PassoRequest(
     Guid FaseId,

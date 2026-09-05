@@ -35,6 +35,10 @@ public class Usuario
     // Papel de gestor (definido no login pela lista de e-mails no appsettings). Libera o painel do gestor.
     public bool IsGestor { get; set; }
 
+    // Acesso ao Bússola. False = desligado da empresa (ou revogado por outro motivo) — login
+    // recusado nos dois fluxos (senha e Microsoft), mesmo com credencial/token válido.
+    public bool Ativo { get; set; } = true;
+
     // Gestor responsável por este usuário (null = sem supervisor). Um gestor só vê seus supervisionados.
     public Guid? GestorId { get; set; }
 
