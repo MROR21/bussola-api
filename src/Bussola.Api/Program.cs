@@ -380,18 +380,38 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
         .OrderBy(u => u.Nome)
         .ToListAsync();
 
+    // Os fluxos do squad de cada um também contam como parte da Jornada (fase "Conheça o
+    // sistema") — mesma regra que a trilha do próprio usuário e o progresso individual
+    // (GET .../progresso) já seguem. Sem isso, o total aqui ficava menor que o real.
+    var idsUsuarios = usuarios.Select(u => u.Id).ToList();
+    var fluxosConcluidosPorUsuario = (await db.FluxosConcluidos
+            .Where(f => idsUsuarios.Contains(f.UsuarioId))
+            .ToListAsync())
+        .GroupBy(f => f.UsuarioId)
+        .ToDictionary(g => g.Key, g => g.Select(f => f.FluxoId).ToHashSet());
+    var fluxosPorSquad = (await db.Fluxos.Where(f => f.Squad != null).ToListAsync())
+        .GroupBy(f => f.Squad!.Value)
+        .ToDictionary(g => g.Key, g => g.Select(f => f.Id).ToList());
+
     // Projeção em memória: Email é Value Object (não dá pra projetar .Value no SQL).
-    var resultado = usuarios.Select(u => new
+    var resultado = usuarios.Select(u =>
     {
-        u.Id,
-        u.Nome,
-        Email = u.Email.Value,
-        u.Cargo,
-        u.Squad,
-        u.IsGestor,
-        u.NivelamentoConcluido,
-        PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0),
-        TotalPassos = totalPassos,
+        var fluxosDoSquad = fluxosPorSquad.GetValueOrDefault(u.Squad, new List<Guid>());
+        var concluidosFluxo = fluxosConcluidosPorUsuario.GetValueOrDefault(u.Id, new HashSet<Guid>());
+        var fluxosFeitos = fluxosDoSquad.Count(concluidosFluxo.Contains);
+
+        return new
+        {
+            u.Id,
+            u.Nome,
+            Email = u.Email.Value,
+            u.Cargo,
+            u.Squad,
+            u.IsGestor,
+            u.NivelamentoConcluido,
+            PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0) + fluxosFeitos,
+            TotalPassos = totalPassos + fluxosDoSquad.Count,
+        };
     });
 
     return Results.Ok(resultado);
@@ -420,15 +440,50 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
 
     var steps = await db.OnboardingSteps.Include(s => s.Fase)
         .OrderBy(s => s.Fase.Order).ThenBy(s => s.Order).ToListAsync();
-    var passos = steps.Select(s => new
+
+    // Mesma fase sintética "Conheça o sistema" que a trilha do próprio usuário monta (fluxos do
+    // squad dele, logo antes do Primeiro Card) — sem isso, o gestor via só os Passos "de verdade"
+    // e a contagem/trilha ficava incompleta (faltava uma fase inteira comparado à Jornada real).
+    var fluxosConcluidos = (await db.FluxosConcluidos
+        .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
+    var fluxosDoSquad = await db.Fluxos
+        .Where(fluxo => fluxo.Squad == alvo.Squad)
+        .OrderBy(fluxo => fluxo.Order)
+        .ToListAsync();
+
+    var passos = new List<object>();
+
+    void AdicionarFluxosDoSquad() => passos.AddRange(fluxosDoSquad.Select(fluxo => (object)new
     {
-        s.Id,
-        s.Order,
-        Phase = s.Fase.Nome,
-        s.Title,
-        Concluido = evidenciaPorStep.ContainsKey(s.Id),
-        Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
-    });
+        fluxo.Id,
+        fluxo.Order,
+        Phase = FaseConhecaOSistema,
+        Title = fluxo.Titulo,
+        Concluido = fluxosConcluidos.Contains(fluxo.Id),
+        Evidencia = string.Empty,
+    }));
+
+    var inseriuFluxos = false;
+    foreach (var s in steps)
+    {
+        if (!inseriuFluxos && s.Fase.Nome == FasePrimeiroCard)
+        {
+            AdicionarFluxosDoSquad();
+            inseriuFluxos = true;
+        }
+
+        passos.Add(new
+        {
+            s.Id,
+            s.Order,
+            Phase = s.Fase.Nome,
+            s.Title,
+            Concluido = evidenciaPorStep.ContainsKey(s.Id),
+            Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
+        });
+    }
+
+    if (!inseriuFluxos) AdicionarFluxosDoSquad();
 
     return Results.Ok(new { alvo.Nome, alvo.Cargo, Passos = passos });
 })
