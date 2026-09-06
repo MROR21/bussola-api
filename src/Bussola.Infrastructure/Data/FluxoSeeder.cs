@@ -109,33 +109,34 @@ public static class FluxoSeeder
         // fluxos por assunto na tela (Folha, Alocação, Orçamento...), virando um índice do módulo.
         var sistemas = new (string Modulo, Squad Squad, (string Titulo, string Descricao, string Tag)[] Fluxos)[]
         {
+            // Conteúdo real, curado a partir das aulas em vídeo do wiki "Agilean na Prática"
+            // (2026-09-05) — substitui os stubs mock que existiam antes (só descreviam o que ia
+            // ter). "Visão geral da Mão de Obra" é o único sobrevivente do conjunto antigo — o
+            // Miguel pediu pra manter só o resumo, sem vídeo (o vídeo que estava nela foi pro
+            // Onboarding/Ambientação, não é da MdO especificamente).
             (ModuloMdO, Squad.MaoDeObra, new (string, string, string)[]
             {
                 ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra.", "Visão geral"),
-                ("Folha de pagamento — visão geral", "Como a folha organiza os pagamentos do período.", "Folha"),
-                ("Detalhe e ajuste da folha", "Ajustar valores e sugeridos dentro de uma folha.", "Folha"),
-                ("Resolver pendências", "Tratar itens pendentes de uma folha/alocação.", "Folha"),
-                ("Distribuição automática", "Distribuir valores automaticamente pela equipe.", "Folha"),
-                ("Devolver valor a pagar", "Quando e como devolver um valor a pagar.", "Folha"),
-                ("Alocação de equipe", "Distribuir funcionários e pesos numa alocação.", "Alocação"),
-                ("Adicionar e incluir alocações", "Incluir novas alocações e novos funcionários.", "Alocação"),
-                ("Orçamento de mão de obra", "Como o orçamento de MdO é montado.", "Orçamento"),
-                ("Despesas indiretas", "O que são e como entram no orçamento.", "Orçamento"),
-                ("Pacotes de trabalho", "Agrupar serviços em pacotes.", "Orçamento"),
-                ("Custos e relatórios", "Ler os custos consolidados da obra.", "Relatórios"),
-                ("Ocultar e exibir funcionário", "Controlar a visibilidade de um funcionário.", "Equipe"),
+                ("Dashboards do Portal: longo prazo", "Dashboards do Portal com visão de longo prazo.", "Portal"),
+                ("Dashboards do Portal: curto, médio prazo e financeiro", "Curto prazo, médio prazo, financeiro, medições e resultados gerais.", "Portal"),
+                ("Início, ranking e relatórios do Portal", "Início, ranking, relatórios e datas de controle no Portal Admin.", "Portal"),
+                ("Portal Admin: integrações e orçamento", "Integrações e orçamento no Portal Admin.", "Portal"),
+                ("Mão de obra própria: histograma, funções e funcionários", "Histograma, funções, funcionários e mão de obra própria.", "Mão de obra própria e terceiros"),
+                ("Mão de obra de terceiros", "Gestão da mão de obra de terceiros.", "Mão de obra própria e terceiros"),
+                ("Curto prazo operacional e causas", "Curto prazo operacional e o registro de causas.", "Curto prazo operacional"),
             }),
             (ModuloQQ, Squad.QuizQuality, new (string, string, string)[]
             {
-                ("Visão geral do Quiz Quality", "O que o squad de qualidade/inspeção faz.", "Visão geral"),
-                ("Inspeções", "Como criar e conduzir uma inspeção.", "Inspeção"),
-                ("Relatórios de qualidade", "Ler e exportar os relatórios de qualidade.", "Relatórios"),
+                ("Quiz Quality Portal: cadastros e preparação da obra", "Cadastros e preparação da obra no Quiz Quality Portal.", "Portal"),
+                ("Quiz Quality Portal e App: qualidade admin e inspeções", "Qualidade Admin e criação/tramitação de inspeções normais e mapeadas.", "Portal"),
             }),
             (ModuloAgilean, Squad.Agilean, new (string, string, string)[]
             {
-                ("Visão geral do Agilean", "O aplicativo de planejamento da obra.", "Visão geral"),
-                ("Planejamento", "Montar o planejamento no desktop.", "Planejamento"),
-                ("Acompanhamento", "Acompanhar o avanço do plano.", "Acompanhamento"),
+                ("Primeiros passos no Agilean", "Criar conta, empresa, projeto e os primeiros cadastros no Agilean Desktop.", "Primeiros passos"),
+                ("Planejamento: linha de balanço e orçamento", "Criar linha de balanço, linha base, orçamento e reprogramação.", "Planejamento"),
+                ("Reprogramação, medição e o App Agilean", "Reprogramação, medição e o uso do App Agilean.", "Planejamento"),
+                ("Fechamento: reprogramação e medição", "Reprogramação e medição com fechamento, e o App Agilean.", "Fechamento"),
+                ("Aprofundamento: medição de fechamento", "Vídeo extra de tira-dúvidas, aprofundando o fechamento na medição.", "Fechamento"),
             }),
         };
 
@@ -165,10 +166,37 @@ public static class FluxoSeeder
 
     // Vídeo (embed) por título de fluxo — o link de "Inserir/Embed" do SharePoint/Stream, não o de
     // compartilhamento comum (esse último não roda dentro de um <iframe> de outro site).
+    // "Visão geral da Mão de Obra" NÃO entra aqui de propósito: o vídeo que estava nela (o de RH,
+    // que fala de todos os produtos) foi movido pro Onboarding/Ambientação — esse Fluxo fica só
+    // com o resumo em texto.
     private static readonly Dictionary<string, string> VideoUrls = new()
     {
-        ["Visão geral da Mão de Obra"] =
-            "https://agileantech-my.sharepoint.com/personal/rh_agilean_com_br/_layouts/15/embed.aspx?UniqueId=679fd2f1-7a44-4ec8-96ec-26eb4c4b3290&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Planejamento: linha de balanço e orçamento"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=a73e6ac7-c4ea-407f-be26-0e27a827628a&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Reprogramação, medição e o App Agilean"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=1475f59c-82c8-4a5c-92a5-63c1f1c05d5c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Fechamento: reprogramação e medição"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=2a86f41b-dc8c-450e-9e66-65c571548d3e&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Aprofundamento: medição de fechamento"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=e82ba5ad-6bd2-46b5-a900-d8887db402e4&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Dashboards do Portal: longo prazo"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=300de5ca-2daf-4c88-85c3-f614c99b2ae9&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Dashboards do Portal: curto, médio prazo e financeiro"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=55b90f80-38d6-420a-9076-9cafeda5d1f0&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Início, ranking e relatórios do Portal"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=987926bb-cb2b-43fc-abb1-20b3b0c76251&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Portal Admin: integrações e orçamento"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=23c72783-16a2-4c74-81eb-4742da6cc14b&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Mão de obra própria: histograma, funções e funcionários"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=156a9de7-14eb-4d1a-aa2c-03314be4228c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Mão de obra de terceiros"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=5c14645e-0dab-470a-94a4-dbad4b03e9c2&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Quiz Quality Portal: cadastros e preparação da obra"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=b9bd24a1-f430-4303-9bb7-254b6773aa7c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Quiz Quality Portal e App: qualidade admin e inspeções"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=eda30a9d-7c8a-42d1-8846-f6736ee1337c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        // "Primeiros passos no Agilean" e "Curto prazo operacional e causas" ficam de fora daqui de
+        // propósito — Miguel ainda não tem acesso a esses 2 vídeos (aulas 1 e 13).
     };
 
     // Conteúdo (Markdown) curado dos fluxos de sistema, por título.
@@ -194,315 +222,96 @@ public static class FluxoSeeder
         Comece pela **Folha** (o dia a dia) e depois entenda **Alocação** e **Orçamento**, que
         alimentam os valores sugeridos.
         """,
-        ["Folha de pagamento — visão geral"] = """
-        ## Folha de pagamento — visão geral
-        A **folha** agrupa os pagamentos de mão de obra de um **período** (competência). Lista os
-        funcionários, o quanto cada um tem **a pagar** e o quanto já foi **pago/retirado**.
-
-        ## Status da folha (importa muito)
-        - **Aberta** — pode editar valores, ajustar alocações, resolver pendências.
-        - **Em aprovação** / **Aprovada** — **bloqueada** para edição. A regra é: só é editável
-          enquanto está *aberta* (`IsOpen`).
-
-        ## Conceitos que voltam sempre
-        - **A pagar** = o que ainda falta pagar no período.
-        - **Retirada / pagamento** = o que já saiu; o **saldo** nasce da diferença.
-        - **Pendências** = itens que precisam de ação antes de fechar (ver o fluxo de pendências).
-
-        A folha é a porta de entrada do módulo — ajuste, sugerido, pendências e devolução acontecem
-        todos a partir dela.
+        ["Dashboards do Portal: longo prazo"] = """
+        ## Dashboards do Portal: longo prazo
+        - Portal Dashboards.
+        - Longo prazo.
         """,
-        ["Detalhe e ajuste da folha"] = """
-        ## Detalhe e ajuste da folha
-        Ao abrir uma folha, o **detalhe** mostra cada funcionário e seus valores. O **ajuste** é
-        onde você corrige quanto cada um recebe.
-
-        ## Sugerido vs. manual
-        - O sistema calcula um **valor sugerido** por funcionário (a partir da alocação e do saldo).
-        - Você pode **aplicar o sugerido** (individual ou em massa) ou digitar um **valor manual**.
-        - Aplicar sugerido só faz sentido quando o **sugerido é > 0**.
-
-        ## Pegadinhas reais
-        - O ajuste só é possível com a folha **aberta**; em aprovação/aprovada fica só leitura.
-        - Valores digitados **não podem vazar entre funcionários/alocações** — cada linha é
-          independente (já foi uma classe de bug aqui).
-        - Ao ocultar quem tem saldo zero, o cálculo deve **netar pagamento e retirada**, não olhar
-          só o pagamento.
-
-        O ajuste é o coração da folha — é aqui que o valor final de cada pessoa é definido.
+        ["Dashboards do Portal: curto, médio prazo e financeiro"] = """
+        ## Dashboards do Portal: curto, médio prazo e financeiro
+        - Curto prazo.
+        - Médio prazo (Portal e Planner).
+        - Financeiro (Dashboards e Admin).
+        - Medições.
+        - Resultados gerais.
+        - Belgo pronto.
         """,
-        ["Alocação de equipe"] = """
-        ## Alocação de equipe
-        A **alocação** distribui os funcionários de uma equipe entre as frentes de serviço, usando
-        **pesos**. O peso define que fatia do custo cai em cada funcionário/serviço.
-
-        ## Dois modos de peso
-        - **Por salário** — o peso sai do salário de cada um (proporcional).
-        - **Manual** — você define o peso na mão.
-
-        > **Regra importante:** se um funcionário **não tem salário** cadastrado, o modo *por
-        > salário* não fecha — a alocação **cai automaticamente para peso manual** e o salvamento
-        > fica bloqueado até os pesos serem válidos.
-
-        ## Fluxo típico
-        1. Escolha a equipe.
-        2. Defina o modo de peso (salário ou manual).
-        3. Ajuste os pesos até bater o total.
-        4. Salve — a alocação vira base do **sugerido** na folha.
-
-        Alocação bem-feita = sugerido correto na folha. As duas coisas andam juntas.
+        ["Início, ranking e relatórios do Portal"] = """
+        ## Início, ranking e relatórios do Portal
+        - Início.
+        - Ranking.
+        - Relatórios.
+        - Portal Admin: Datas de controle.
         """,
-        ["Adicionar e incluir alocações"] = """
-        ## Adicionar e incluir alocações
-        Além de editar uma alocação existente, você pode **incluir novas alocações** e **adicionar
-        funcionários** a uma equipe que já existe.
-
-        ## Duas ações parecidas, mas diferentes
-        - **Adicionar funcionário** a uma alocação — entra mais uma pessoa; os pesos se rebalanceiam.
-        - **Incluir alocação** — cria uma nova distribuição (ex.: outra frente/serviço).
-
-        ## Pegadinhas
-        - Ao adicionar um funcionário **sem salário**, o modo cai para **manual** (mesmo gating da
-          alocação normal).
-        - O **sugerido** aqui é calculado **por funcionário**, não no agregado — senão o excesso de
-          um sobre-pago "come" o avanço de outro.
-        - Dá pra adicionar funcionário a uma alocação de criação que **já tem equipe**.
-
-        Use quando a equipe real mudou: alguém entrou, ou surgiu uma frente nova no período.
+        ["Portal Admin: integrações e orçamento"] = """
+        ## Portal Admin: integrações e orçamento
+        - Portal Admin: Integrações.
+        - Orçamento.
         """,
-        ["Orçamento de mão de obra"] = """
-        ## Orçamento de mão de obra
-        O **orçamento de MdO** é o quanto está **previsto** gastar com pessoas na obra, organizado
-        por serviço/pacote. É o alvo contra o qual a folha (o gasto real) é comparada.
-
-        ## Como se monta
-        - Cada **serviço** tem um custo de mão de obra previsto.
-        - Serviços podem ser agrupados em **pacotes de trabalho**.
-        - Há também as **despesas indiretas** (o que não é mão de obra direta de um serviço).
-
-        ## Orçamento manual vs. calculado
-        - Parte pode vir calculada; parte pode ser **manual** (você digita o previsto).
-        - Em orçamento manual, as **despesas indiretas** também entram — e precisam aparecer no
-          consolidado, sem "sumir".
-
-        O orçamento é a régua: sem ele, "gastou muito ou pouco?" não tem resposta. A folha preenche
-        o realizado; o orçamento diz o esperado.
+        ["Mão de obra própria: histograma, funções e funcionários"] = """
+        ## Mão de obra própria: histograma, funções e funcionários
+        - Histograma, Funções e Funcionários.
+        - Mão de Obra Própria.
         """,
-        ["Despesas indiretas"] = """
-        ## Despesas indiretas
-        **Despesas indiretas** são custos de mão de obra que **não pertencem diretamente a um
-        serviço** — apoio, encargos, estrutura. Entram no orçamento por fora dos serviços diretos,
-        mas contam no **custo total**.
-
-        ## Onde aparecem
-        - No **orçamento** (inclusive no manual), como um item próprio.
-        - No **consolidado de custos**, somando ao total da obra.
-
-        ## Pegadinhas
-        - Em orçamento manual, a despesa indireta precisa **entrar de fato** no cálculo — já houve
-          bug de ela ficar de fora.
-        - No item sintético (o agrupador) não pode aparecer **traço solto / valor órfão** — o
-          agregado tem que fechar com os filhos.
-
-        Pense nelas como o "custo de estar na obra" que não cabe em nenhum serviço específico, mas
-        que alguém paga.
+        ["Mão de obra de terceiros"] = """
+        ## Mão de obra de terceiros
+        - Mão de Obra de Terceiros.
         """,
-        ["Pacotes de trabalho"] = """
-        ## Pacotes de trabalho
-        Um **pacote de trabalho** agrupa vários serviços numa unidade só — pra orçar, alocar e
-        acompanhar o custo de forma consolidada, em vez de serviço a serviço.
-
-        ## Pra que serve
-        - **Organizar** frentes que andam juntas (ex.: tudo de uma etapa da obra).
-        - **Consolidar** custo e avanço no nível do pacote.
-        - Servir de base pra ações em lote (as mesmas da folha).
-
-        ## Pegadinhas
-        - Ações que existem na folha (como **devolver valor a pagar**) também aparecem em pacotes e
-          seguem as **mesmas regras de elegibilidade** — o botão desabilita quando não se aplica,
-          com o motivo nas exceções.
-        - Um pacote com itens crus precisa de **guarda** pra não contar valor de funcionário oculto
-          no dashboard.
-
-        Pacote = a "pasta" que junta serviços afins pra você raciocinar por etapa, não por item solto.
-        """,
-        ["Resolver pendências"] = """
-        ## Resolver pendências
-        **Pendências** são itens de uma folha/alocação que precisam de ação antes de fechar o
-        período — funcionário com valor a definir, retirada sem contrapartida, ou distribuição que
-        não fechou.
-
-        ## O que costuma pendenciar
-        - Funcionário com **retirada anterior** mas **sem "a pagar"** definido.
-        - Distribuição/peso que não somou o total.
-        - Valores que precisam de aplicação do sugerido ou de ajuste manual.
-
-        ## No modal de pendências
-        - Cada linha traz o funcionário e o que falta.
-        - Você resolve aplicando sugerido, ajustando valor, ou tratando a exceção.
-
-        > **Do lado do usuário:** se resolver "todas de uma vez" travar a tela, é bug (já houve um
-        > loop de re-render), não uso errado.
-
-        Zerar as pendências é o pré-requisito pra fechar/aprovar a folha com segurança.
-        """,
-        ["Distribuição automática"] = """
-        ## Distribuição automática
-        A **distribuição automática** espalha um valor pela equipe de uma vez, em vez de você digitar
-        funcionário por funcionário. É atalho pra alocar/pagar rápido respeitando os pesos.
-
-        ## Como funciona
-        - Você define o total (ou usa o sugerido) e o sistema **reparte** pela equipe.
-        - A repartição respeita os **pesos** da alocação (salário ou manual).
-        - Há opção de **mínimo permitido por %** — um piso pra ninguém ficar abaixo de certa fatia.
-
-        ## Pegadinhas
-        - O **mínimo por %** não pode ser reaplicado cegamente "em todo mundo" — quem tem bloqueio
-          não deve ser empurrado pro mesmo % de quem está livre.
-        - O sugerido que alimenta a distribuição precisa ser o **correto por funcionário**.
-
-        Use quando quer velocidade e a regra de peso já está certa — a automática só é tão boa quanto
-        a alocação por trás dela.
-        """,
-        ["Devolver valor a pagar"] = """
-        ## Devolver valor a pagar
-        **Devolver valor a pagar** retorna um valor que estava marcado a pagar para um funcionário —
-        por correção, ou porque o pagamento não vai acontecer naquele período.
-
-        ## Elegibilidade (o ponto central)
-        - O botão só deve agir quando o funcionário/valor **é elegível** à devolução.
-        - Quando **não** é elegível, o botão fica **desabilitado**, e um **modal de exceções**
-          explica *por que* aqueles itens não podem ser devolvidos.
-        - A mesma regra vale nas telas de **pacotes**, não só na folha.
-
-        ## Fluxo
-        1. Selecione o(s) funcionário(s).
-        2. Se elegível, confirme a devolução; senão, o modal lista as exceções.
-        3. O valor volta pra "a pagar" / sai do pago, conforme o caso.
-
-        > **Regra de ouro:** checar elegibilidade **antes** de habilitar. Botão que age sem checar é
-        > fonte de erro.
-        """,
-        ["Custos e relatórios"] = """
-        ## Custos e relatórios
-        A visão de **custos** consolida quanto a obra gastou com mão de obra e compara com o orçado.
-        É onde o gestor lê o "placar" do período.
-
-        ## O que você lê aqui
-        - **Realizado** (o que a folha efetivou) vs. **orçado** (a previsão).
-        - Custo por **serviço**, por **pacote**, e com as **despesas indiretas** somadas.
-        - Consolidado da obra inteira.
-
-        ## Pegadinhas
-        - Um **funcionário oculto** (saldo zerado) **não pode** contaminar o total — nem via
-          alocação, nem via pacote com itens crus.
-        - Tabelas grandes precisam de **virtualização** — sem isso a tela trava.
-
-        É a foto final: se orçamento é o alvo e a folha é o tiro, os relatórios mostram o quão perto
-        você acertou.
-        """,
-        ["Ocultar e exibir funcionário"] = """
-        ## Ocultar e exibir funcionário
-        **Ocultar** um funcionário tira ele da visão da folha/alocação quando ele não tem mais nada a
-        tratar no período (tipicamente **saldo zero**). **Exibir** desfaz isso.
-
-        ## A regra do saldo (importante)
-        - Só deve poder ocultar quem está **de fato quitado** — e "quitado" significa **netar
-          pagamento e retirada**, não olhar só o pagamento. Quem recebeu retirada ainda pode ter saldo.
-
-        ## O que ocultar NÃO pode fazer
-        - Não pode **sumir** com valor no consolidado: alocação e pacote do oculto saem das contas
-          visíveis, mas sem quebrar o total.
-        - Um funcionário ocultado **não deve reaparecer** no ajuste/detalhe da folha (a visão ao vivo
-          e o *snapshot* têm que concordar — a correção certa mora no snapshot).
-
-        Ocultar é organização visual com regra de negócio embutida: esconde o que está resolvido, sem
-        falsear número nenhum.
+        ["Curto prazo operacional e causas"] = """
+        ## Curto prazo operacional e causas
+        - Curto Prazo Operacional.
+        - Causas.
         """,
 
-        // ── Quiz Quality (visão geral — completar pelo squad) ───────────────────────
-        ["Visão geral do Quiz Quality"] = """
-        ## Visão geral do Quiz Quality
-        O **Quiz Quality (QQ)** é o squad de **inspeção e qualidade** — a parte do produto que checa
-        se o que foi executado na obra está conforme.
-
-        > _Visão geral inicial — os detalhes de tela devem ser completados por alguém do squad QQ._
-
-        ## Ideia geral
-        - Cria e conduz **inspeções** de qualidade.
-        - Gera **relatórios** do que foi inspecionado.
-        - Alimenta a decisão de aceitar / rejeitar / retrabalhar uma frente.
-
-        Se você entrou no QQ, use este módulo como esqueleto e complete cada fluxo com o passo a passo
-        real da sua tela.
+        // ── Quiz Quality ─────────────────────────────────────────────────────────────
+        ["Quiz Quality Portal: cadastros e preparação da obra"] = """
+        ## Quiz Quality Portal: cadastros e preparação da obra
+        - QuizQuality Portal.
+        - Cadastros e preparação da obra.
         """,
-        ["Inspeções"] = """
-        ## Inspeções
-        A **inspeção** é o registro de uma verificação de qualidade em campo: o que foi checado, o
-        resultado e as evidências.
-
-        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad QQ._
-
-        ## Em linhas gerais
-        - Criar uma inspeção (o que / onde inspecionar).
-        - Registrar itens e resultado (conforme / não conforme).
-        - Anexar evidências e concluir.
-
-        O detalhe de cada campo e botão fica pendente de curadoria do squad.
-        """,
-        ["Relatórios de qualidade"] = """
-        ## Relatórios de qualidade
-        Os **relatórios** consolidam as inspeções: o que passou, o que reprovou e onde estão os pontos
-        de atenção da obra.
-
-        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad QQ._
-
-        ## Em linhas gerais
-        - Ler o resultado consolidado das inspeções.
-        - Filtrar por período / frente.
-        - Exportar quando preciso.
-
-        Complete com as opções reais de filtro e exportação da tela.
+        ["Quiz Quality Portal e App: qualidade admin e inspeções"] = """
+        ## Quiz Quality Portal e App: qualidade admin e inspeções
+        - Quizquality Portal e App.
+        - Qualidade Admin.
+        - Criação e tramitação de inspeções normais e mapeadas.
         """,
 
-        // ── Agilean desktop (visão geral — completar pelo squad) ────────────────────
-        ["Visão geral do Agilean"] = """
-        ## Visão geral do Agilean
-        O **Agilean (desktop)** é o aplicativo de **planejamento da obra** — onde o plano é montado e
-        acompanhado, fora do portal web.
-
-        > _Visão geral inicial — completar com detalhes de tela por alguém do squad Agilean._
-
-        ## Ideia geral
-        - Montar o **planejamento** (o que fazer, quando).
-        - Acompanhar o **avanço** contra o previsto.
-
-        Use como esqueleto; o passo a passo real do desktop deve ser preenchido por quem é do squad.
+        // ── Agilean desktop ──────────────────────────────────────────────────────────
+        ["Primeiros passos no Agilean"] = """
+        ## Primeiros passos no Agilean
+        - Criar uma conta no Agilean.
+        - Criar Empresa.
+        - Criar Filial.
+        - Criar Projeto.
+        - Criar Tipologia.
+        - Criar Diagrama.
+        - Salvar arquivos locais e no servidor.
+        - Edição de Obras.
+        - Edição de Usuários.
+        - Edição de Perfis.
         """,
-        ["Planejamento"] = """
-        ## Planejamento
-        No **planejamento** você monta o plano da obra no desktop: as etapas, a sequência e os prazos.
-
-        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad Agilean._
-
-        ## Em linhas gerais
-        - Definir etapas / frentes e sua ordem.
-        - Estabelecer prazos e dependências.
-
-        O detalhe de cada tela do desktop fica pendente de curadoria do squad.
+        ["Planejamento: linha de balanço e orçamento"] = """
+        ## Planejamento: linha de balanço e orçamento
+        - Criar Linha de balanço.
+        - Criar Linha Base.
+        - Criar Orçamento.
+        - Reprogramação.
         """,
-        ["Acompanhamento"] = """
-        ## Acompanhamento
-        O **acompanhamento** compara o avanço real da obra com o que foi planejado, pra enxergar
-        atraso / adiantamento cedo.
-
-        > _Conteúdo inicial — completar com o passo a passo real por alguém do squad Agilean._
-
-        ## Em linhas gerais
-        - Registrar avanço das etapas.
-        - Comparar previsto vs. realizado.
-
-        Complete com as telas e indicadores reais do desktop.
+        ["Reprogramação, medição e o App Agilean"] = """
+        ## Reprogramação, medição e o App Agilean
+        - Reprogramação.
+        - Medição.
+        - App Agilean.
+        """,
+        ["Fechamento: reprogramação e medição"] = """
+        ## Fechamento: reprogramação e medição
+        - Reprogramação com Fechamento.
+        - Medição com fechamento.
+        - App Agilean.
+        """,
+        ["Aprofundamento: medição de fechamento"] = """
+        ## Aprofundamento: medição de fechamento
+        Vídeo extra de tira-dúvidas, aprofundando o tema de fechamento na medição.
         """,
     };
 
