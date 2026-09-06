@@ -145,6 +145,7 @@ app.MapGet("/onboarding/steps", async (AppDbContext db) =>
             step.IsCompanySpecific,
             step.SkillArea,
             step.Conteudo,
+            step.VideoUrl,
         })
         .ToListAsync())
    .WithName("GetOnboardingSteps");
@@ -214,6 +215,7 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
             s.IsCompanySpecific,
             s.SkillArea,
             s.Conteudo,
+            s.VideoUrl,
         })
         .FirstOrDefaultAsync();
     return step is null
@@ -741,6 +743,7 @@ app.MapGet("/admin/passos", async (AppDbContext db) =>
         s.IsCompanySpecific,
         s.SkillArea,
         s.Conteudo,
+        s.VideoUrl,
     }).ToListAsync())
    .WithName("AdminGetPassos")
    .RequireAuthorization("Gestor");
@@ -759,6 +762,7 @@ app.MapPost("/admin/passos", async (PassoRequest req, AppDbContext db) =>
         IsCompanySpecific = req.IsCompanySpecific,
         SkillArea = req.SkillArea,
         Conteudo = req.Conteudo,
+        VideoUrl = req.VideoUrl,
     };
     db.OnboardingSteps.Add(passo);
     await db.SaveChangesAsync();
@@ -781,6 +785,7 @@ app.MapPut("/admin/passos/{id:guid}", async (Guid id, PassoRequest req, AppDbCon
     passo.IsCompanySpecific = req.IsCompanySpecific;
     passo.SkillArea = req.SkillArea;
     passo.Conteudo = req.Conteudo;
+    passo.VideoUrl = req.VideoUrl;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
@@ -1461,7 +1466,8 @@ record PassoRequest(
     string Description,
     bool IsCompanySpecific,
     SkillArea SkillArea,
-    string Conteudo);
+    string Conteudo,
+    string VideoUrl);
 record FluxoRequest(
     Guid ModuloId,
     Squad? Squad,

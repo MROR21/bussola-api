@@ -14,4 +14,6 @@ public class OnboardingStep
 
     // Conteúdo completo do passo, em Markdown (a "aula"). O Description é o resumo de uma linha.
     public string Conteudo { get; set; } = string.Empty;
+    // URL do vídeo do passo (opcional). Vazio = passo só de texto.
+    public string VideoUrl { get; set; } = string.Empty;
 }
