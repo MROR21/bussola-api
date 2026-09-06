@@ -141,9 +141,11 @@ public static class FluxoSeeder
         };
 
         var lista = new List<Fluxo>();
-        var ordem = 1;
+        // Order reinicia em 1 a cada módulo — cada squad enxerga sua própria sequência (1, 2, 3...)
+        // em vez de um contador global entre módulos.
         foreach (var (modulo, squad, fluxos) in sistemas)
         {
+            var ordem = 1;
             foreach (var (titulo, descricao, tag) in fluxos)
             {
                 lista.Add(new Fluxo
@@ -160,7 +162,7 @@ public static class FluxoSeeder
             }
         }
 
-        lista.AddRange(BasicoDoDev(ref ordem, moduloPorNome[ModuloBasico]));
+        lista.AddRange(BasicoDoDev(moduloPorNome[ModuloBasico]));
         return lista;
     }
 
@@ -316,7 +318,7 @@ public static class FluxoSeeder
     };
 
     // Fluxos genéricos do dia a dia do dev (os que já existiam no #4), agora no módulo "Básico do dev".
-    private static IEnumerable<Fluxo> BasicoDoDev(ref int ordem, Guid moduloBasicoId)
+    private static IEnumerable<Fluxo> BasicoDoDev(Guid moduloBasicoId)
     {
         var basicos = new List<Fluxo>
         {
@@ -510,6 +512,7 @@ public static class FluxoSeeder
             },
         };
 
+        var ordem = 1;
         foreach (var fluxo in basicos)
         {
             fluxo.Order = ordem++;
