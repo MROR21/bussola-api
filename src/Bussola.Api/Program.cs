@@ -231,7 +231,8 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 // específico do squad entra na jornada, não como restrição de acesso).
 app.MapGet("/fluxos", async (AppDbContext db) =>
     await db.Fluxos
-        .OrderBy(fluxo => fluxo.Order)
+        .OrderBy(fluxo => fluxo.Modulo.Order)
+        .ThenBy(fluxo => fluxo.Order)
         .Select(fluxo => new
         {
             fluxo.Id,
@@ -452,7 +453,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
     var concluidos = (await db.FluxosConcluidos
         .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
 
-    var todos = await db.Fluxos.Include(f => f.Modulo).OrderBy(f => f.Order).ToListAsync();
+    var todos = await db.Fluxos.Include(f => f.Modulo)
+        .OrderBy(f => f.Modulo.Order).ThenBy(f => f.Order).ToListAsync();
     var visiveis = todos
         .Select(f => new
         {
@@ -807,7 +809,7 @@ app.MapDelete("/admin/passos/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // Lista os fluxos com ModuloId explícito (o /fluxos colaborador-facing continua igual).
 app.MapGet("/admin/fluxos", async (AppDbContext db) =>
-    await db.Fluxos.OrderBy(f => f.Order).Select(f => new
+    await db.Fluxos.OrderBy(f => f.Modulo.Order).ThenBy(f => f.Order).Select(f => new
     {
         f.Id,
         f.Order,
