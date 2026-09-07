@@ -756,12 +756,22 @@ app.MapGet("/admin/emails-autorizados", async (AppDbContext db) =>
    .WithName("AdminGetEmailsAutorizados")
    .RequireAuthorization("Gestor");
 
-app.MapPost("/admin/emails-autorizados", async (EmailAutorizadoRequest req, AppDbContext db) =>
+app.MapPost("/admin/emails-autorizados", async (EmailAutorizadoRequest req, AppDbContext db, IConfiguration config) =>
 {
     if (!Email.TryCreate(req.Email, out var email))
     {
         return Results.BadRequest(new { erro = "Email inválido." });
     }
+
+    // Mesma trava de domínio do cadastro/login (Auth:DominioPermitido) — não faz sentido
+    // pré-autorizar um e-mail que nem vai conseguir se cadastrar de verdade.
+    var dominioPermitido = config["Auth:DominioPermitido"];
+    if (!string.IsNullOrWhiteSpace(dominioPermitido)
+        && !email!.Value.EndsWith($"@{dominioPermitido}", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { erro = $"Apenas e-mails @{dominioPermitido} podem ser pré-autorizados." });
+    }
+
     if (await db.EmailsAutorizadosGestor.AnyAsync(e => e.Email == email!.Value))
     {
         return Results.BadRequest(new { erro = "Esse e-mail já está na lista." });
