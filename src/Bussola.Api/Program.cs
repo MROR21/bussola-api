@@ -59,6 +59,42 @@ builder.Services
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ValidateLifetime = true,
         };
+        // Sem isso, alguém com o acesso revogado (Ativo=false) continuava usando o token já
+        // emitido normalmente até ele expirar sozinho — a checagem de `Ativo` só existia no LOGIN,
+        // nunca em requests de uma sessão já aberta. Aqui confere o banco a cada request
+        // autenticado; revogado = falha a autenticação com um motivo próprio (não confundir com
+        // token expirado/inválido), que o OnChallenge abaixo transforma numa mensagem real no
+        // corpo da resposta — o front (`services/api.ts`) já lê `erro` do corpo em qualquer 401.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                if (!Guid.TryParse(context.Principal?.FindFirstValue("sub"), out var userId))
+                {
+                    context.Fail("token-sem-sub");
+                    return;
+                }
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var ativo = await db.Usuarios
+                    .Where(u => u.Id == userId)
+                    .Select(u => (bool?)u.Ativo)
+                    .FirstOrDefaultAsync();
+                if (ativo != true)
+                {
+                    context.Fail("acesso-revogado");
+                }
+            },
+            OnChallenge = async context =>
+            {
+                if (context.AuthenticateFailure?.Message == "acesso-revogado")
+                {
+                    context.HandleResponse();
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsJsonAsync(new { erro = "Seu acesso foi revogado." });
+                }
+            },
+        };
     });
 builder.Services.AddAuthorization(options =>
     options.AddPolicy("Gestor", policy => policy.RequireClaim("gestor", "true")));
@@ -375,8 +411,11 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
         .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
         .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
 
+    // Acesso revogado (`Ativo=false`) some da lista de supervisionados — mas NÃO desvincula
+    // `GestorId`, então reativar o acesso (em /admin/usuarios) já traz a pessoa de volta pra cá,
+    // pro mesmo gestor, sem precisar readicionar como supervisionado.
     var usuarios = await db.Usuarios
-        .Where(u => u.GestorId == gestorId)
+        .Where(u => u.GestorId == gestorId && u.Ativo)
         .OrderBy(u => u.Nome)
         .ToListAsync();
 
@@ -701,6 +740,7 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
             u.Squad,
             u.IsGestor,
             u.Ativo,
+            u.GestorId,
         })
         .ToListAsync())
    .WithName("AdminGetUsuarios")
@@ -708,7 +748,8 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
 
 // Promove/demove um usuário a gestor. Sempre uma ação explícita de outro gestor (nunca a própria
 // pessoa) — e nunca demove quem ainda tem supervisionados vinculados (mesmo padrão de guarda que
-// Fase/Módulo já usam: primeiro desvincula, depois demove).
+// Fase/Módulo já usam: primeiro desvincula, depois demove). Também não promove quem está com o
+// acesso revogado (não faz sentido dar papel de gestor pra quem nem consegue entrar).
 app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRequest req, ClaimsPrincipal caller, AppDbContext db) =>
 {
     if (!Guid.TryParse(caller.FindFirstValue("sub"), out var callerId) || callerId == id)
@@ -718,6 +759,11 @@ app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRe
 
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    if (req.IsGestor && !usuario.Ativo)
+    {
+        return Results.BadRequest(new { erro = "Não dá pra tornar supervisor alguém com o acesso revogado." });
+    }
 
     if (!req.IsGestor && await db.Usuarios.AnyAsync(u => u.GestorId == id))
     {
@@ -732,7 +778,11 @@ app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRe
    .RequireAuthorization("Gestor");
 
 // Revoga/reativa o acesso de um usuário (ex.: funcionário desligado). Mesma regra de guarda do
-// papel de gestor: nunca a própria pessoa se revoga.
+// papel de gestor: nunca a própria pessoa se revoga. Quando o alvo já tem um gestor vinculado, só
+// ESSE gestor pode mexer no acesso dele (pedido explícito — antes qualquer gestor podia revogar
+// supervisionado de outro); sem gestor vinculado, qualquer gestor pode (caso de off-boarding geral,
+// sem dono específico ainda). Revogar NÃO desvincula `GestorId` — só esconde da lista de
+// supervisionados (ver GET /gestor/usuarios); reativar traz de volta pro mesmo gestor sozinho.
 app.MapPut("/admin/usuarios/{id:guid}/ativo", async (Guid id, AtivarUsuarioRequest req, ClaimsPrincipal caller, AppDbContext db) =>
 {
     if (!Guid.TryParse(caller.FindFirstValue("sub"), out var callerId) || callerId == id)
@@ -742,6 +792,11 @@ app.MapPut("/admin/usuarios/{id:guid}/ativo", async (Guid id, AtivarUsuarioReque
 
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+
+    if (usuario.GestorId.HasValue && usuario.GestorId.Value != callerId)
+    {
+        return Results.BadRequest(new { erro = "Só o gestor desse supervisionado pode mexer no acesso dele." });
+    }
 
     usuario.Ativo = req.Ativo;
     await db.SaveChangesAsync();
