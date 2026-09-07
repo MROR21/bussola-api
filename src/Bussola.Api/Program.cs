@@ -565,6 +565,75 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
    .WithName("GetFluxosSupervisionado")
    .RequireAuthorization("Gestor");
 
+// Acessos a liberar pro supervisionado, conforme o Cargo dele (cumulativo — ver comentário na
+// entidade `Acesso`) + quais já foram marcados concluídos.
+app.MapGet("/gestor/usuarios/{usuarioId:guid}/acessos", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var concluidos = (await db.AcessosConcluidos
+        .Where(a => a.UsuarioId == usuarioId).Select(a => a.AcessoId).ToListAsync()).ToHashSet();
+
+    var acessos = await db.Acessos
+        .Where(a => a.CargoMinimo <= alvo.Cargo)
+        .OrderBy(a => a.Order)
+        .Select(a => new
+        {
+            a.Id,
+            a.Nome,
+            a.Link,
+            Concluido = concluidos.Contains(a.Id),
+        })
+        .ToListAsync();
+
+    return Results.Ok(acessos);
+})
+   .WithName("GetAcessosSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Marca (ou desmarca) um Acesso como liberado pro supervisionado — sempre uma ação do gestor DELE,
+// clicando no chip (não existe callback de "voltou do link externo": marca já no clique).
+app.MapPut("/gestor/usuarios/{usuarioId:guid}/acessos/{acessoId:guid}", async (
+    Guid usuarioId, Guid acessoId, MarcarAcessoRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var existente = await db.AcessosConcluidos
+        .FirstOrDefaultAsync(a => a.UsuarioId == usuarioId && a.AcessoId == acessoId);
+
+    if (req.Concluido && existente is null)
+    {
+        db.AcessosConcluidos.Add(new AcessoConcluido { UsuarioId = usuarioId, AcessoId = acessoId });
+    }
+    else if (!req.Concluido && existente is not null)
+    {
+        db.AcessosConcluidos.Remove(existente);
+    }
+
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("MarcarAcessoSupervisionado")
+   .RequireAuthorization("Gestor");
+
 // Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
 app.MapGet("/gestor/disponiveis", async (AppDbContext db) =>
 {
@@ -855,6 +924,62 @@ app.MapDelete("/admin/emails-autorizados/{id:guid}", async (Guid id, AppDbContex
 
 // Lista os passos com FaseId explícito (a colaborador-facing /onboarding/steps continua igual,
 // pensada pra exibição, não edição).
+// --- Admin: CRUD de Acessos (ex.: "E-mail Agilean", "Teams") — substitui a lista ilustrativa
+// ACESSOS_POR_CARGO que era hardcoded no front. `CargoMinimo` é cumulativo: quem tem esse cargo ou
+// um acima também precisa desse acesso (ver comentário na entidade `Acesso`). ---
+
+app.MapGet("/admin/acessos", async (AppDbContext db) =>
+    await db.Acessos.OrderBy(a => a.Order).ToListAsync())
+   .WithName("AdminGetAcessos")
+   .RequireAuthorization("Gestor");
+
+app.MapPost("/admin/acessos", async (AcessoRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do acesso." });
+
+    var acesso = new Acesso
+    {
+        Nome = req.Nome.Trim(),
+        Link = req.Link?.Trim() ?? string.Empty,
+        CargoMinimo = req.CargoMinimo,
+        Order = req.Order,
+    };
+    db.Acessos.Add(acesso);
+    await db.SaveChangesAsync();
+    return Results.Ok(acesso);
+})
+   .WithName("AdminCreateAcesso")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/acessos/{id:guid}", async (Guid id, AcessoRequest req, AppDbContext db) =>
+{
+    var acesso = await db.Acessos.FindAsync(id);
+    if (acesso is null) return Results.NotFound(new { erro = "Acesso não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do acesso." });
+
+    acesso.Nome = req.Nome.Trim();
+    acesso.Link = req.Link?.Trim() ?? string.Empty;
+    acesso.CargoMinimo = req.CargoMinimo;
+    acesso.Order = req.Order;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdateAcesso")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/acessos/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var acesso = await db.Acessos.FindAsync(id);
+    if (acesso is not null)
+    {
+        db.Acessos.Remove(acesso);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteAcesso")
+   .RequireAuthorization("Gestor");
+
 app.MapGet("/admin/passos", async (AppDbContext db) =>
     await db.OnboardingSteps.OrderBy(s => s.Order).Select(s => new
     {
@@ -1580,6 +1705,8 @@ record TrailItemView(
 // Corpos do CRUD de admin (fases/passos/módulos/fluxos).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
+record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
+record MarcarAcessoRequest(bool Concluido);
 record PromoverUsuarioRequest(bool IsGestor);
 record AtivarUsuarioRequest(bool Ativo);
 record EmailAutorizadoRequest(string Email);

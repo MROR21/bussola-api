@@ -15,6 +15,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Fase> Fases => Set<Fase>();
     public DbSet<Modulo> Modulos => Set<Modulo>();
     public DbSet<EmailAutorizadoGestor> EmailsAutorizadosGestor => Set<EmailAutorizadoGestor>();
+    public DbSet<Acesso> Acessos => Set<Acesso>();
+    public DbSet<AcessoConcluido> AcessosConcluidos => Set<AcessoConcluido>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,6 +53,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // E-mail pré-autorizado é único — sem duplicata na lista.
         modelBuilder.Entity<EmailAutorizadoGestor>()
             .HasIndex(e => e.Email)
+            .IsUnique();
+
+        // Um acesso só pode ser marcado concluído uma vez por usuário (mesmo padrão de
+        // PassoConcluido/FluxoConcluido).
+        modelBuilder.Entity<AcessoConcluido>()
+            .HasIndex(ac => new { ac.UsuarioId, ac.AcessoId })
             .IsUnique();
 
         // Restrict (não Cascade, que seria o padrão do EF pra FK obrigatória): apagar uma Fase ou
