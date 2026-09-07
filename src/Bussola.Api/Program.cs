@@ -968,6 +968,7 @@ app.MapGet("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
             n.Link,
             n.Lida,
             n.CriadaEm,
+            n.AutorId,
             AutorNome = autor?.Nome,
             AutorFoto = autor?.Foto,
         };
