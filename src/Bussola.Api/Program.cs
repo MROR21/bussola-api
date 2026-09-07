@@ -111,6 +111,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await OnboardingSeeder.SeedAsync(db);
     await FluxoSeeder.SeedAsync(db);
+    await AcessoSeeder.SeedAsync(db);
 
     // Backfill: notificações antigas de "liberou o fluxo" (sem link) ganham o redirecionamento.
     const string prefixoLiberou = "Seu gestor liberou o fluxo: ";
