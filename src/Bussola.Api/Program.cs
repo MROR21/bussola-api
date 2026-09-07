@@ -411,6 +411,7 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
             u.NivelamentoConcluido,
             PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0) + fluxosFeitos,
             TotalPassos = totalPassos + fluxosDoSquad.Count,
+            u.Foto,
         };
     });
 
