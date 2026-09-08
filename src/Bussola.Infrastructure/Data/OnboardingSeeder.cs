@@ -17,6 +17,10 @@ public static class OnboardingSeeder
         Hey, novo Agilean lover! Sua chegada aqui vai ser leve, acolhedora e ágil — a gente já
         reuniu tudo o que você precisa saber pra começar com o pé direito.
 
+        No seu 1º dia tem um **Check-in** (um bate-papo pra gente te conhecer melhor) e a
+        **apresentação do seu padrinho/madrinha** — a pessoa que vai te acompanhar de perto nesse
+        começo. Em caso de dúvida, é só chamar a gente!
+
         ## Sobre a empresa
         A **Agilean** é uma empresa de tecnologia voltada para a construção civil, que nasceu com o
         propósito de transformar a gestão de obras por meio da digitalização e da filosofia **Lean**.
@@ -33,8 +37,8 @@ public static class OnboardingSeeder
         de obras inteligente, conectada e autônoma — impactando 3.500 canteiros simultâneos até o
         fim de 2027.
 
-        > O próprio criador do Lean Construction, Lauri Koskela, já parabenizou a Agilean pelo nível
-        > de Lean Construction que a plataforma possibilita para as empresas.
+        > "Parabéns pelo nível de Lean Construction que a Agilean possibilita para as empresas!"
+        > — **Lauri Koskela**, criador do Lean Construction, pro André Quinderé (CEO da Agilean).
         """,
         [2] = """
         ## Nossa história
@@ -146,6 +150,9 @@ public static class OnboardingSeeder
         - **Aline Vasconcelos** — (85) 99690-0185
         - **Jéssica Veloso** — (85) 99708-5121
         - **Isabella Montenegro** — (85) 98500-7749
+
+        > O RH da Agilean conta com o apoio da **Devant Consultoria em Recursos Humanos** como
+        > parceira estratégica.
         """,
         [8] = """
         ## Entenda os repositórios
