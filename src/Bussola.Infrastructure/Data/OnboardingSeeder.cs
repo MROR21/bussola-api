@@ -14,12 +14,16 @@ public static class OnboardingSeeder
     {
         [1] = """
         ## Bem-vindo à Agilean
+        ![Onboarding Agilean — nosso hub de cultura vivo](/onboarding/boas-vindas.png)
+
         Hey, novo Agilean lover! Sua chegada aqui vai ser leve, acolhedora e ágil — a gente já
         reuniu tudo o que você precisa saber pra começar com o pé direito.
 
         No seu 1º dia tem um **Check-in** (um bate-papo pra gente te conhecer melhor) e a
         **apresentação do seu padrinho/madrinha** — a pessoa que vai te acompanhar de perto nesse
         começo. Em caso de dúvida, é só chamar a gente!
+
+        ![Check-in: queremos conhecer mais sobre você](/onboarding/check-in.png)
 
         ## Sobre a empresa
         A **Agilean** é uma empresa de tecnologia voltada para a construção civil, que nasceu com o
@@ -39,6 +43,8 @@ public static class OnboardingSeeder
 
         > "Parabéns pelo nível de Lean Construction que a Agilean possibilita para as empresas!"
         > — **Lauri Koskela**, criador do Lean Construction, pro André Quinderé (CEO da Agilean).
+
+        ![André Quinderé (CEO) com Lauri Koskela, criador do Lean Construction](/onboarding/lean-reconhecimento.png)
         """,
         [2] = """
         ## Nossa história
@@ -64,6 +70,8 @@ public static class OnboardingSeeder
         """,
         [3] = """
         ## Os valores do nosso time
+        ![Os valores do nosso time](/onboarding/valores.png)
+
         - **Time campeão e integrado**
         - **Só fazemos com qualidade**
         - **Paixão por resultados**
@@ -71,6 +79,8 @@ public static class OnboardingSeeder
         - **Compromisso com tudo o que fazemos**
 
         ## Comportamentos esperados na Agilean
+        ![Comportamentos esperados na Agilean](/onboarding/comportamentos.png)
+
         - Agimos com **energia e foco**, acompanhamos metas e buscamos gerar impacto real com
           nossas entregas.
         - Colaboramos de forma **ativa**, compartilhando conhecimento, apoiando uns aos outros e
@@ -83,6 +93,9 @@ public static class OnboardingSeeder
         """,
         [4] = """
         ## Liderança
+        ![C-level: Juliana Quinderé, André Quinderé e Lucas Timbó](/onboarding/c-level.png)
+        ![Gerentes: Gabriel Soares, Israel Chacon e Igor Araújo](/onboarding/gerentes.png)
+
         - **André Quinderé** — CEO e Diretor Comercial
         - **Juliana Quinderé** — Diretora de CS/Adm/Financeiro
         - **Lucas Timbó** — Diretor de Tecnologia
@@ -101,16 +114,22 @@ public static class OnboardingSeeder
         """,
         [5] = """
         ## Ferramentas de comunicação
+        ![Ferramentas de comunicação: Feedz e Microsoft Teams](/onboarding/ferramentas-comunicacao.png)
+
         - **Feedz** — avaliações de desempenho e comunicação de RH.
         - **Microsoft Teams** — comunicação do dia a dia, reuniões e chamadas.
 
         ## Rituais da liderança
+        ![Reuniões de liderança, alinhamento e Conecta mensal](/onboarding/reunioes.png)
+
         - **Reunião de Liderança** — toda segunda-feira de manhã, foco em revisão de OKRs, metas e
           planos de ação.
         - **Encontro entre lideranças** — alinhamentos estratégicos e tomada de decisão.
         - **Conecta (mensal)** — apresentação de resultados e comunicação para a empresa inteira.
 
         ## Período de experiência
+        ![Período de experiência: 45 e 90 dias, avaliação 180º pela Feedz](/onboarding/periodo-experiencia.png)
+
         Acompanhamento em dois momentos — **45 dias** e **90 dias** — pela plataforma Feedz, no
         formato **180º** (feedback do líder + autoavaliação sua).
         """,
@@ -131,13 +150,20 @@ public static class OnboardingSeeder
         > Se faltar algum desses acessos, fale com o gestor.
         """,
         [7] = """
+        ## Apresentação RH
+        ![Como funciona nosso RH: Isabella Montenegro, Jéssica e Aline, com a Devant](/onboarding/apresentacao-rh.png)
+
         ## Pagamento
+        ![Pagamento: salário e Flash](/onboarding/pagamento.png)
+
         - **CLT** — todo dia 05.
         - **PJ** — todo dia 05.
         - **Flash** (benefício) — disponível já no seu dia de entrada: primeiro entram 10 dias
           úteis, depois o restante do mês.
 
         ## Plano de saúde
+        ![Plano de saúde](/onboarding/plano-saude.png)
+
         Dois planos disponíveis — **Hapvida** (a empresa paga 50%) e **Amil** (a empresa paga 30%).
         O valor varia com a idade; dependente paga o valor integral. Benefício disponível para CLT
         e PJ.
@@ -147,6 +173,8 @@ public static class OnboardingSeeder
         - **Flow** — a plataforma de gestão interna da Agilean.
 
         ## Precisa falar com o RH?
+        ![Telefones para contato](/onboarding/telefones-contato.png)
+
         - **Aline Vasconcelos** — (85) 99690-0185
         - **Jéssica Veloso** — (85) 99708-5121
         - **Isabella Montenegro** — (85) 98500-7749
