@@ -623,6 +623,20 @@ app.MapPut("/gestor/usuarios/{usuarioId:guid}/acessos/{acessoId:guid}", async (
     if (req.Concluido && existente is null)
     {
         db.AcessosConcluidos.Add(new AcessoConcluido { UsuarioId = usuarioId, AcessoId = acessoId });
+
+        // Só notifica ao LIBERAR (não ao desmarcar) — o colaborador vê o chip virar verde na
+        // própria Jornada (seção "Seus acessos"), o sino é só o aviso de que aconteceu.
+        var acesso = await db.Acessos.FindAsync(acessoId);
+        if (acesso is not null)
+        {
+            var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
+            db.Notificacoes.Add(new Notificacao
+            {
+                UsuarioId = usuarioId,
+                Mensagem = $"{gestorNome} liberou seu acesso: {acesso.Nome}.",
+                AutorId = gestorId,
+            });
+        }
     }
     else if (!req.Concluido && existente is not null)
     {
