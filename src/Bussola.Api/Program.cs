@@ -1564,6 +1564,39 @@ app.MapGet("/users/{id:guid}/progress", async (Guid id, ClaimsPrincipal user, Ap
    .WithName("GetProgresso")
    .RequireAuthorization();
 
+// Os PRÓPRIOS acessos do colaborador (leitura — quem marca é o gestor, na tela do
+// Supervisionado). Sem isso, "acompanhe seus acessos" no modal de boas-vindas não tinha nenhuma
+// tela de verdade por trás — o colaborador nunca via o próprio progresso de acesso.
+app.MapGet("/users/{id:guid}/acessos", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario is null) return Results.NotFound();
+
+    var concluidos = (await db.AcessosConcluidos
+        .Where(a => a.UsuarioId == id).Select(a => a.AcessoId).ToListAsync()).ToHashSet();
+
+    var acessos = await db.Acessos
+        .Where(a => a.CargoMinimo <= usuario.Cargo)
+        .OrderBy(a => a.Order)
+        .Select(a => new
+        {
+            a.Id,
+            a.Nome,
+            a.Link,
+            Concluido = concluidos.Contains(a.Id),
+        })
+        .ToListAsync();
+
+    return Results.Ok(acessos);
+})
+   .WithName("GetMeusAcessos")
+   .RequireAuthorization();
+
 // Marca um passo como concluído (idempotente).
 app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepId, ConcluirPassoRequest? req, ClaimsPrincipal user, AppDbContext db) =>
 {
