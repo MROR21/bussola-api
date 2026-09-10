@@ -197,8 +197,12 @@ public static class FluxoSeeder
             "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=b9bd24a1-f430-4303-9bb7-254b6773aa7c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
         ["Quiz Quality Portal e App: qualidade admin e inspeções"] =
             "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=eda30a9d-7c8a-42d1-8846-f6736ee1337c&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
-        // "Primeiros passos no Agilean" e "Curto prazo operacional e causas" ficam de fora daqui de
-        // propósito — Miguel ainda não tem acesso a esses 2 vídeos (aulas 1 e 13).
+        // Aulas 1 e 13 (títulos originais: "Agilean na Prática 1.mp4" e "Agilean na Prática CPO
+        // (13).mp4") — Miguel conseguiu o acesso em 2026-09-10, antes só o título/conteúdo existia.
+        ["Primeiros passos no Agilean"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=72d249a5-a1e9-44d8-9eda-330dfb518815&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
+        ["Curto prazo operacional e causas"] =
+            "https://agileantech-my.sharepoint.com/personal/gabriel_ferreira_agilean_com_br/_layouts/15/embed.aspx?UniqueId=3cb26a5f-4453-4551-9f1f-436670eb2909&embed=%7B%22ust%22%3Atrue%2C%22hv%22%3A%22CopyEmbedCode%22%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create",
     };
 
     // Conteúdo (Markdown) curado dos fluxos de sistema, por título.
