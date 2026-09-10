@@ -1689,7 +1689,8 @@ app.MapPost("/auth/microsoft", async (
 })
    .WithName("LoginMicrosoft");
 
-// --- Tokens de API (autenticado por JWT normal — gerenciar token não pode ser feito só com token) ---
+// --- Tokens de API (só gestor — pedido do Miguel 2026-09-10; autenticado por JWT normal, não dá
+// pra gerenciar token só com outro token) ---
 
 // Gera um token novo pro usuário logado — mesmo acesso dele, sem senha. Só devolve o valor em
 // texto puro AQUI, na criação; dali pra frente só o hash fica guardado (ApiTokenHasher).
@@ -1711,7 +1712,8 @@ app.MapPost("/perfil/api-tokens", async (CriarApiTokenRequest req, ClaimsPrincip
 
     return Results.Ok(new { registro.Id, registro.Nome, registro.CriadoEm, token = valor });
 })
-   .WithName("CriarApiToken");
+   .WithName("CriarApiToken")
+   .RequireAuthorization("Gestor");
 
 // Lista os tokens do usuário logado — nunca o valor em si, só nome/datas (pra ele saber o que
 // existe e revogar o que não usa mais).
@@ -1729,7 +1731,8 @@ app.MapGet("/perfil/api-tokens", async (ClaimsPrincipal user, AppDbContext db) =
         .ToListAsync();
     return Results.Ok(tokens);
 })
-   .WithName("ListarApiTokens");
+   .WithName("ListarApiTokens")
+   .RequireAuthorization("Gestor");
 
 // Revoga (apaga) um token — só o próprio dono.
 app.MapDelete("/perfil/api-tokens/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
@@ -1747,7 +1750,8 @@ app.MapDelete("/perfil/api-tokens/{id:guid}", async (Guid id, ClaimsPrincipal us
     }
     return Results.NoContent();
 })
-   .WithName("RevogarApiToken");
+   .WithName("RevogarApiToken")
+   .RequireAuthorization("Gestor");
 
 // Salva o nivelamento (Perfil) no usuário.
 app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, ClaimsPrincipal user, AppDbContext db) =>
