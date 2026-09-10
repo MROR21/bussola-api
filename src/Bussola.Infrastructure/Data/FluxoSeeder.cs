@@ -111,12 +111,11 @@ public static class FluxoSeeder
         {
             // Conteúdo real, curado a partir das aulas em vídeo do wiki "Agilean na Prática"
             // (2026-09-05) — substitui os stubs mock que existiam antes (só descreviam o que ia
-            // ter). "Visão geral da Mão de Obra" é o único sobrevivente do conjunto antigo — o
-            // Miguel pediu pra manter só o resumo, sem vídeo (o vídeo que estava nela foi pro
-            // Onboarding/Ambientação, não é da MdO especificamente).
+            // ter). "Visão geral da Mão de Obra" (resumo em texto, sem vídeo) foi REMOVIDA em
+            // 2026-09-10 — só existia nesse módulo, sem equivalente em QQ/Agilean, e o Miguel
+            // achou inconsistente ter um preâmbulo só numa trilha.
             (ModuloMdO, Squad.MaoDeObra, new (string, string, string)[]
             {
-                ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra.", "Visão geral"),
                 ("Dashboards do Portal: longo prazo", "Dashboards do Portal com visão de longo prazo.", "Portal"),
                 ("Dashboards do Portal: curto, médio prazo e financeiro", "Curto prazo, médio prazo, financeiro, medições e resultados gerais.", "Portal"),
                 ("Início, ranking e relatórios do Portal", "Início, ranking, relatórios e datas de controle no Portal Admin.", "Portal"),
@@ -168,9 +167,6 @@ public static class FluxoSeeder
 
     // Vídeo (embed) por título de fluxo — o link de "Inserir/Embed" do SharePoint/Stream, não o de
     // compartilhamento comum (esse último não roda dentro de um <iframe> de outro site).
-    // "Visão geral da Mão de Obra" NÃO entra aqui de propósito: o vídeo que estava nela (o de RH,
-    // que fala de todos os produtos) foi movido pro Onboarding/Ambientação — esse Fluxo fica só
-    // com o resumo em texto.
     private static readonly Dictionary<string, string> VideoUrls = new()
     {
         ["Planejamento: linha de balanço e orçamento"] =
@@ -211,23 +207,6 @@ public static class FluxoSeeder
     private static readonly Dictionary<string, string> Conteudos = new()
     {
         // ── Mão de Obra ─────────────────────────────────────────────────────────────
-        ["Visão geral da Mão de Obra"] = """
-        ## Visão geral da Mão de Obra
-        O módulo de **Mão de Obra (MdO)** controla o **custo de pessoas** numa obra: quanto cada
-        funcionário recebe, como esse valor se distribui entre as frentes de serviço, e como isso
-        se compara ao que foi orçado.
-
-        ## As três pontas
-        - **Orçamento** — o quanto está previsto gastar com mão de obra (por serviço/pacote).
-        - **Alocação** — como a equipe real é distribuída nas frentes (com pesos).
-        - **Folha** — o pagamento efetivo do período, que consome o orçado.
-
-        > **Ideia central:** cada real pago a um funcionário precisa "cair" em algum lugar do
-        > orçamento. A MdO é o que amarra *pessoa → serviço → custo*.
-
-        Comece pela **Folha** (o dia a dia) e depois entenda **Alocação** e **Orçamento**, que
-        alimentam os valores sugeridos.
-        """,
         ["Dashboards do Portal: longo prazo"] = """
         ## Dashboards do Portal: longo prazo
         - Portal Dashboards.
