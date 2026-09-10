@@ -111,11 +111,12 @@ public static class FluxoSeeder
         {
             // Conteúdo real, curado a partir das aulas em vídeo do wiki "Agilean na Prática"
             // (2026-09-05) — substitui os stubs mock que existiam antes (só descreviam o que ia
-            // ter). "Visão geral da Mão de Obra" (resumo em texto, sem vídeo) foi REMOVIDA em
-            // 2026-09-10 — só existia nesse módulo, sem equivalente em QQ/Agilean, e o Miguel
-            // achou inconsistente ter um preâmbulo só numa trilha.
+            // ter). Cada módulo abre com uma "Visão geral" (resumo em texto, sem vídeo) — mesma
+            // base/estrutura nos 3 (intro + "as três pontas" + ideia central + por onde começar),
+            // pedido do Miguel 2026-09-10 pra ficar consistente entre os squads.
             (ModuloMdO, Squad.MaoDeObra, new (string, string, string)[]
             {
+                ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra.", "Visão geral"),
                 ("Dashboards do Portal: longo prazo", "Dashboards do Portal com visão de longo prazo.", "Portal"),
                 ("Dashboards do Portal: curto, médio prazo e financeiro", "Curto prazo, médio prazo, financeiro, medições e resultados gerais.", "Portal"),
                 ("Início, ranking e relatórios do Portal", "Início, ranking, relatórios e datas de controle no Portal Admin.", "Portal"),
@@ -126,11 +127,13 @@ public static class FluxoSeeder
             }),
             (ModuloQQ, Squad.QuizQuality, new (string, string, string)[]
             {
+                ("Visão geral do Quiz Quality", "O que o QQ controla: inspeções de qualidade e não conformidades na obra.", "Visão geral"),
                 ("Quiz Quality Portal: cadastros e preparação da obra", "Cadastros e preparação da obra no Quiz Quality Portal.", "Portal"),
                 ("Quiz Quality Portal e App: qualidade admin e inspeções", "Qualidade Admin e criação/tramitação de inspeções normais e mapeadas.", "Portal"),
             }),
             (ModuloAgilean, Squad.Agilean, new (string, string, string)[]
             {
+                ("Visão geral do Agilean (desktop)", "O que o Agilean controla: planejamento e acompanhamento da obra.", "Visão geral"),
                 ("Primeiros passos no Agilean", "Criar conta, empresa, projeto e os primeiros cadastros no Agilean Desktop.", "Primeiros passos"),
                 ("Planejamento: linha de balanço e orçamento", "Criar linha de balanço, linha base, orçamento e reprogramação.", "Planejamento"),
                 ("Reprogramação, medição e o App Agilean", "Reprogramação, medição e o uso do App Agilean.", "Planejamento"),
@@ -207,6 +210,23 @@ public static class FluxoSeeder
     private static readonly Dictionary<string, string> Conteudos = new()
     {
         // ── Mão de Obra ─────────────────────────────────────────────────────────────
+        ["Visão geral da Mão de Obra"] = """
+        ## Visão geral da Mão de Obra
+        O módulo de **Mão de Obra (MdO)** controla o **custo de pessoas** numa obra: quanto cada
+        funcionário recebe, como esse valor se distribui entre as frentes de serviço, e como isso
+        se compara ao que foi orçado.
+
+        ## As três pontas
+        - **Orçamento** — o quanto está previsto gastar com mão de obra (por serviço/pacote).
+        - **Alocação** — como a equipe real é distribuída nas frentes (com pesos).
+        - **Folha** — o pagamento efetivo do período, que consome o orçado.
+
+        > **Ideia central:** cada real pago a um funcionário precisa "cair" em algum lugar do
+        > orçamento. A MdO é o que amarra *pessoa → serviço → custo*.
+
+        Comece pela **Folha** (o dia a dia) e depois entenda **Alocação** e **Orçamento**, que
+        alimentam os valores sugeridos.
+        """,
         ["Dashboards do Portal: longo prazo"] = """
         ## Dashboards do Portal: longo prazo
         - Portal Dashboards.
@@ -249,6 +269,24 @@ public static class FluxoSeeder
         """,
 
         // ── Quiz Quality ─────────────────────────────────────────────────────────────
+        ["Visão geral do Quiz Quality"] = """
+        ## Visão geral do Quiz Quality
+        O módulo de **Quiz Quality (QQ)** controla a **qualidade das entregas** numa obra: o que
+        precisa ser inspecionado, quem inspeciona em campo, e como cada não conformidade é
+        tratada até ser resolvida.
+
+        ## As três pontas
+        - **Cadastro e preparação da obra** — o que existe pra inspecionar (itens, checklists, mapas).
+        - **Inspeções (App)** — o registro em campo, feito por quem está na obra.
+        - **Qualidade Admin (Portal)** — a criação e tramitação das inspeções, normais e mapeadas.
+
+        > **Ideia central:** cada inspeção nasce de um cadastro, é registrada em campo pelo App, e
+        > tramita no Portal até virar uma ação de verdade. QQ é o que amarra *o que checar → quem
+        > viu → o que foi feito*.
+
+        Comece pelo **Cadastro e preparação da obra** (a base de tudo) e depois entenda como o
+        **App** e o **Portal** se conversam no dia a dia.
+        """,
         ["Quiz Quality Portal: cadastros e preparação da obra"] = """
         ## Quiz Quality Portal: cadastros e preparação da obra
         - QuizQuality Portal.
@@ -262,6 +300,25 @@ public static class FluxoSeeder
         """,
 
         // ── Agilean desktop ──────────────────────────────────────────────────────────
+        ["Visão geral do Agilean (desktop)"] = """
+        ## Visão geral do Agilean (desktop)
+        O **Agilean (desktop)** é o produto original de **Planejamento & Controle** de obra:
+        onde o projeto é estruturado, o planejamento é criado, e o andamento real é medido
+        contra o que foi planejado.
+
+        ## As três pontas
+        - **Estrutura** — empresa, filial, projeto, tipologia e diagrama (a base de tudo).
+        - **Planejamento** — linha de balanço, linha base e orçamento.
+        - **Acompanhamento** — reprogramação e medição, no desktop e pelo App Agilean, até o
+          fechamento do período.
+
+        > **Ideia central:** o diagrama vira linha de balanço, a linha de balanço vira orçamento,
+        > e o acompanhamento (reprogramação + medição) mostra o quanto a obra real se afasta do
+        > planejado.
+
+        Comece pelos **Primeiros passos** (criar a estrutura) e depois siga pro **Planejamento**
+        e **Acompanhamento**, que são o ciclo que se repete a cada período.
+        """,
         ["Primeiros passos no Agilean"] = """
         ## Primeiros passos no Agilean
         - Criar uma conta no Agilean.
