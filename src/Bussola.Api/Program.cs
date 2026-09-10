@@ -7,6 +7,7 @@ using Bussola.Domain.Entities;
 using Bussola.Domain.Nivelamento;
 using Bussola.Domain.ValueObjects;
 using Bussola.Infrastructure.Data;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,28 @@ builder.Services.AddSingleton<EmailSender>();
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(options =>
+    {
+        options.DefaultScheme = "SmartAuth";
+        options.DefaultAuthenticateScheme = "SmartAuth";
+        options.DefaultChallengeScheme = "SmartAuth";
+    })
+    // Dá pra chamar a API com um token pessoal (gerado em /perfil/api-tokens) no lugar do login
+    // normal — mesmo uso que já se faz com token do Jira/Bitbucket, direto via curl/PowerShell
+    // sem passar pelo login. Detecta pelo PREFIXO do valor (só o token de API começa com
+    // "bussola_pat_") e despacha pro handler certo — o resto da API (policies, endpoints) nem
+    // sabe qual dos dois autenticou, já que os dois produzem os mesmos claims (sub/gestor/nome).
+    .AddPolicyScheme("SmartAuth", "JWT ou token de API", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            var header = context.Request.Headers.Authorization.ToString();
+            return header.StartsWith("Bearer " + ApiTokenHasher.Prefixo, StringComparison.Ordinal)
+                ? ApiTokenAuthHandler.SchemeName
+                : JwtBearerDefaults.AuthenticationScheme;
+        };
+    })
+    .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthHandler>(ApiTokenAuthHandler.SchemeName, _ => { })
     .AddJwtBearer(options =>
     {
         options.MapInboundClaims = false; // mantém "sub"/"gestor" com o nome original
@@ -1667,6 +1689,66 @@ app.MapPost("/auth/microsoft", async (
 })
    .WithName("LoginMicrosoft");
 
+// --- Tokens de API (autenticado por JWT normal — gerenciar token não pode ser feito só com token) ---
+
+// Gera um token novo pro usuário logado — mesmo acesso dele, sem senha. Só devolve o valor em
+// texto puro AQUI, na criação; dali pra frente só o hash fica guardado (ApiTokenHasher).
+app.MapPost("/perfil/api-tokens", async (CriarApiTokenRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+    if (string.IsNullOrWhiteSpace(req.Nome))
+    {
+        return Results.BadRequest(new { erro = "Dê um nome pro token (ex.: \"Claude Code\")." });
+    }
+
+    var valor = ApiTokenHasher.Gerar();
+    var registro = new ApiToken { UsuarioId = userId, Nome = req.Nome.Trim(), TokenHash = ApiTokenHasher.Hash(valor) };
+    db.ApiTokens.Add(registro);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { registro.Id, registro.Nome, registro.CriadoEm, token = valor });
+})
+   .WithName("CriarApiToken");
+
+// Lista os tokens do usuário logado — nunca o valor em si, só nome/datas (pra ele saber o que
+// existe e revogar o que não usa mais).
+app.MapGet("/perfil/api-tokens", async (ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var tokens = await db.ApiTokens
+        .Where(t => t.UsuarioId == userId)
+        .OrderByDescending(t => t.CriadoEm)
+        .Select(t => new { t.Id, t.Nome, t.CriadoEm, t.UltimoUsoEm })
+        .ToListAsync();
+    return Results.Ok(tokens);
+})
+   .WithName("ListarApiTokens");
+
+// Revoga (apaga) um token — só o próprio dono.
+app.MapDelete("/perfil/api-tokens/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var registro = await db.ApiTokens.FirstOrDefaultAsync(t => t.Id == id && t.UsuarioId == userId);
+    if (registro is not null)
+    {
+        db.ApiTokens.Remove(registro);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("RevogarApiToken");
+
 // Salva o nivelamento (Perfil) no usuário.
 app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, ClaimsPrincipal user, AppDbContext db) =>
 {
@@ -2183,6 +2265,7 @@ record RegisterRequest(string Nome, string Email, string Senha);
 record MicrosoftLoginRequest(string AccessToken);
 record ConfirmarEmailRequest(string Email, string Codigo);
 record ReenviarCodigoRequest(string Email);
+record CriarApiTokenRequest(string Nome);
 
 // Só os campos que a gente usa da resposta do Microsoft Graph `GET /me`.
 record MicrosoftGraphMe(string? Mail, string? UserPrincipalName, string? DisplayName);

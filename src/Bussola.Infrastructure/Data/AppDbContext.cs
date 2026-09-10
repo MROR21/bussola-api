@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Acesso> Acessos => Set<Acesso>();
     public DbSet<AcessoConcluido> AcessosConcluidos => Set<AcessoConcluido>();
     public DbSet<CardLink> CardLinks => Set<CardLink>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // 1 CardLink por usuário — reenviar sobrescreve o mesmo registro, não acumula histórico.
         modelBuilder.Entity<CardLink>()
             .HasIndex(c => c.UsuarioId)
+            .IsUnique();
+
+        // Hash do token é único (é praticamente a chave primária de busca no login por token, ver
+        // ApiTokenAuthHandler) — colisão nunca deveria acontecer (256 bits de entropia), mas o
+        // índice único também acelera o lookup por hash em vez de scan.
+        modelBuilder.Entity<ApiToken>()
+            .HasIndex(t => t.TokenHash)
             .IsUnique();
 
         // Restrict (não Cascade, que seria o padrão do EF pra FK obrigatória): apagar uma Fase ou
