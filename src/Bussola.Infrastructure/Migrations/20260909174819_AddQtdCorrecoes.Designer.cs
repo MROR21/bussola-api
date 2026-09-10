@@ -3,6 +3,7 @@ using System;
 using Bussola.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Bussola.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909174819_AddQtdCorrecoes")]
+    partial class AddQtdCorrecoes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -300,9 +303,6 @@ namespace Bussola.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("AguardandoConfirmacao")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("ConcluidoEm")
                         .HasColumnType("timestamp with time zone");
 
@@ -345,18 +345,9 @@ namespace Bussola.Infrastructure.Migrations
                     b.Property<int>("Cargo")
                         .HasColumnType("integer");
 
-                    b.Property<string>("CodigoConfirmacaoEmail")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("CodigoConfirmacaoExpiraEm")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<bool>("EmailConfirmado")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("Foto")
                         .IsRequired()

@@ -39,6 +39,14 @@ public class Usuario
     // recusado nos dois fluxos (senha e Microsoft), mesmo com credencial/token válido.
     public bool Ativo { get; set; } = true;
 
+    // Prova de que o e-mail existe de verdade — o domínio (@agilean.com.br) sozinho não garante
+    // isso, só o formato. Default `true` porque login via Microsoft já autentica o e-mail de
+    // verdade na hora (nasce confirmado); só o cadastro por senha começa `false` e usa o código
+    // abaixo pra confirmar (ver EmailSender/endpoint `/auth/confirmar-email`).
+    public bool EmailConfirmado { get; set; } = true;
+    public string? CodigoConfirmacaoEmail { get; set; }
+    public DateTime? CodigoConfirmacaoExpiraEm { get; set; }
+
     // Gestor responsável por este usuário (null = sem supervisor). Um gestor só vê seus supervisionados.
     public Guid? GestorId { get; set; }
 

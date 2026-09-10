@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<EmailAutorizadoGestor> EmailsAutorizadosGestor => Set<EmailAutorizadoGestor>();
     public DbSet<Acesso> Acessos => Set<Acesso>();
     public DbSet<AcessoConcluido> AcessosConcluidos => Set<AcessoConcluido>();
+    public DbSet<CardLink> CardLinks => Set<CardLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -59,6 +60,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // PassoConcluido/FluxoConcluido).
         modelBuilder.Entity<AcessoConcluido>()
             .HasIndex(ac => new { ac.UsuarioId, ac.AcessoId })
+            .IsUnique();
+
+        // 1 CardLink por usuário — reenviar sobrescreve o mesmo registro, não acumula histórico.
+        modelBuilder.Entity<CardLink>()
+            .HasIndex(c => c.UsuarioId)
             .IsUnique();
 
         // Restrict (não Cascade, que seria o padrão do EF pra FK obrigatória): apagar uma Fase ou

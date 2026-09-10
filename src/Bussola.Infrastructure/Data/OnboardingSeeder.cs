@@ -299,6 +299,12 @@ public static class OnboardingSeeder
         - Responda cada comentário no PR.
         - Ajuste o que fizer sentido e faça push (a mesma branch atualiza o PR).
         - Se discordar, explique com educação — review é conversa.
+
+        Se você já tiver enviado a comprovação do seu primeiro card e seu gestor pedir um ajuste
+        depois disso, você vai ver um aviso aqui no Bússola (no seu último passo), com os
+        comentários dele no próprio PR, no Bitbucket. Corrija, teste localmente e dê push de novo
+        na MESMA branch (o PR e o link continuam os mesmos) — depois, volte aqui no Bússola e
+        marque que já corrigiu, pra avisar seu gestor.
         """,
         [20] = """
         ## Merge + documente

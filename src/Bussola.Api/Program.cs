@@ -41,6 +41,9 @@ builder.Services.AddSingleton<TokenService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<TeamsNotifier>();
 
+// Confirmação de e-mail no cadastro por senha (código de 6 dígitos). Sem credencial = no-op/mock.
+builder.Services.AddSingleton<EmailSender>();
+
 // Validação do JWT (Auth B): protege os endpoints do gestor. O front manda o Bearer token.
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -75,13 +78,26 @@ builder.Services
                     return;
                 }
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-                var ativo = await db.Usuarios
+                var usuario = await db.Usuarios
                     .Where(u => u.Id == userId)
-                    .Select(u => (bool?)u.Ativo)
+                    .Select(u => new { u.Ativo, u.IsGestor })
                     .FirstOrDefaultAsync();
-                if (ativo != true)
+                if (usuario is null || !usuario.Ativo)
                 {
                     context.Fail("acesso-revogado");
+                    return;
+                }
+                // O claim "gestor" gravado no token pode estar velho (token dura até 24h) — sem
+                // isso, promover/demover alguém só refletia depois de relogar (a policy "Gestor"
+                // só olhava o claim do token, nunca revalidava contra o banco). Reconstrói o claim
+                // a cada request com o valor atual, mesmo padrão já usado acima pra `Ativo`.
+                if (context.Principal!.Identity is ClaimsIdentity identity)
+                {
+                    foreach (var antigo in identity.FindAll("gestor").ToList())
+                    {
+                        identity.RemoveClaim(antigo);
+                    }
+                    identity.AddClaim(new Claim("gestor", usuario.IsGestor ? "true" : "false"));
                 }
             },
             OnChallenge = async context =>
@@ -103,6 +119,76 @@ var app = builder.Build();
 
 // TeamsNotifier é singleton → resolvo uma vez e uso nos eventos (evita injetar em cada endpoint).
 var teams = app.Services.GetRequiredService<TeamsNotifier>();
+
+// Compartilhado entre ConcluirPasso (envio normal) e ConfirmarCorrecaoPasso (aprovação do gestor)
+// — os dois são pontos onde um passo pode passar a contar como "concluído de verdade" (ver
+// PrecisaCorrecao/AguardandoConfirmacao) e por isso fechar a fase inteira. `db` vem por parâmetro
+// (cada endpoint recebe o seu, injetado por request); `teams` é capturado do escopo de fora.
+async Task NotificarSeFaseCompletaAsync(
+    AppDbContext db, Guid colaboradorId, string nomeColaborador, Guid gestorId, Guid stepId, string evidencia)
+{
+    var step = await db.OnboardingSteps.Include(s => s.Fase).FirstOrDefaultAsync(s => s.Id == stepId);
+    if (step is null) return;
+
+    var idsDaFase = await db.OnboardingSteps
+        .Where(s => s.FaseId == step.FaseId)
+        .Select(s => s.Id)
+        .ToListAsync();
+    var concluidosDaFase = await db.PassosConcluidos
+        .CountAsync(p => p.UsuarioId == colaboradorId && idsDaFase.Contains(p.OnboardingStepId)
+            && !p.PrecisaCorrecao && !p.AguardandoConfirmacao);
+
+    if (idsDaFase.Count == 0 || concluidosDaFase < idsDaFase.Count) return;
+
+    var ehPrimeiroCard = step.Fase.Nome == "Primeiro Card";
+    var msg = $"{nomeColaborador} concluiu a fase {step.Fase.Nome}.";
+    db.Notificacoes.Add(new Notificacao
+    {
+        UsuarioId = gestorId,
+        Mensagem = msg,
+        AutorId = colaboradorId,
+        // Na conclusão do Primeiro Card, leva pra tela do supervisionado (não direto pro link do
+        // PR) — lá o gestor já vê a comprovação junto do bloco "Primeiro card" (decisão do Miguel:
+        // manter o PR dentro do contexto da pessoa, não abrir direto pra fora do Bússola).
+        // `?destaque=primeiro-card` abre o dropdown certo sozinho e destaca ele na tela.
+        Link = ehPrimeiroCard ? $"/supervisionado/{colaboradorId}?destaque=primeiro-card" : string.Empty,
+    });
+    await db.SaveChangesAsync();
+
+    // Teams fica só pro marco de liberar o Primeiro Card (decisão do Miguel 2026-09-05) — as
+    // demais fases avisam só no sino, sem barulho no Teams.
+    if (ehPrimeiroCard)
+    {
+        var msgComLink = !string.IsNullOrWhiteSpace(evidencia) ? $"{msg} PR: {evidencia}" : msg;
+        await teams.EnviarAsync(msgComLink);
+    }
+
+    // Aviso SEPARADO (sino + Teams) quando a fase concluída agora é a que vem JUSTO ANTES do
+    // Primeiro Card na ordem cadastrada — sinal de "chegou a hora de escolher e mandar um card pra
+    // essa pessoa". Não dispara quando quem chamou já É o Primeiro Card (não tem "próxima fase"
+    // relevante nesse caso) — a checagem abaixo já cobre isso sozinha.
+    var fasesOrdenadas = await db.Fases.OrderBy(f => f.Order).ToListAsync();
+    var indiceAtual = fasesOrdenadas.FindIndex(f => f.Id == step.FaseId);
+    var proximaFase = indiceAtual >= 0 && indiceAtual + 1 < fasesOrdenadas.Count
+        ? fasesOrdenadas[indiceAtual + 1]
+        : null;
+    if (proximaFase?.Nome == "Primeiro Card")
+    {
+        var msgChegou = $"{nomeColaborador} chegou na fase Primeiro Card! Hora de escolher um card pra ele(a).";
+        db.Notificacoes.Add(new Notificacao
+        {
+            UsuarioId = gestorId,
+            Mensagem = msgChegou,
+            AutorId = colaboradorId,
+            // Mesmo destino das outras notificações do Primeiro Card — é lá que o gestor manda o
+            // link do card pro supervisionado (`?destaque=primeiro-card` já abre e destaca o
+            // bloco certo). Sem isso, a notificação avisava mas não levava a pessoa pra ação.
+            Link = $"/supervisionado/{colaboradorId}?destaque=primeiro-card",
+        });
+        await db.SaveChangesAsync();
+        await teams.EnviarAsync(msgChegou);
+    }
+}
 
 // Ao iniciar: aplica migrations pendentes e semeia os dados iniciais (dev).
 using (var scope = app.Services.CreateScope())
@@ -407,7 +493,11 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
     }
 
     var totalPassos = await db.OnboardingSteps.CountAsync();
+    // Estrito (aprovado de verdade, não só enviado) — pedido do Miguel pra manter coerência: essa
+    // lista é a visão de "quanto cada supervisionado JÁ terminou de verdade", não um indicador de
+    // progresso ao vivo tipo a barra da Jornada dele (que sim sente o envio como avanço parcial).
     var concluidosPorUsuario = await db.PassosConcluidos
+        .Where(passo => !passo.PrecisaCorrecao && !passo.AguardandoConfirmacao)
         .GroupBy(passo => passo.UsuarioId)
         .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
         .ToDictionaryAsync(x => x.UsuarioId, x => x.Total);
@@ -478,6 +568,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         .Where(p => p.UsuarioId == usuarioId)
         .ToListAsync();
     var evidenciaPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.Evidencia);
+    var precisaCorrecaoPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.PrecisaCorrecao);
+    var qtdCorrecoesPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.QtdCorrecoes);
+    var aguardandoConfirmacaoPorStep = registros.ToDictionary(p => p.OnboardingStepId, p => p.AguardandoConfirmacao);
 
     var steps = await db.OnboardingSteps.Include(s => s.Fase)
         .OrderBy(s => s.Fase.Order).ThenBy(s => s.Order).ToListAsync();
@@ -502,6 +595,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
         Title = fluxo.Titulo,
         Concluido = fluxosConcluidos.Contains(fluxo.Id),
         Evidencia = string.Empty,
+        PrecisaCorrecao = false,
+        QtdCorrecoes = 0,
+        AguardandoConfirmacao = false,
     }));
 
     var inseriuFluxos = false;
@@ -519,8 +615,16 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
             s.Order,
             Phase = s.Fase.Nome,
             s.Title,
+            // `Concluido` aqui é "tem registro" (mesmo critério de sempre) — é o que faz a barra
+            // de progresso sentir o envio da comprovação como avanço (e o cancelamento como
+            // retrocesso). Pra saber se foi APROVADO de verdade (não só enviado), quem usa combina
+            // isso com `PrecisaCorrecao`/`AguardandoConfirmacao` abaixo — só os dois `false` com
+            // `Concluido` true é aprovação de verdade.
             Concluido = evidenciaPorStep.ContainsKey(s.Id),
             Evidencia = evidenciaPorStep.GetValueOrDefault(s.Id, string.Empty),
+            PrecisaCorrecao = precisaCorrecaoPorStep.GetValueOrDefault(s.Id, false),
+            QtdCorrecoes = qtdCorrecoesPorStep.GetValueOrDefault(s.Id, 0),
+            AguardandoConfirmacao = aguardandoConfirmacaoPorStep.GetValueOrDefault(s.Id, false),
         });
     }
 
@@ -647,6 +751,77 @@ app.MapPut("/gestor/usuarios/{usuarioId:guid}/acessos/{acessoId:guid}", async (
     return Results.NoContent();
 })
    .WithName("MarcarAcessoSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Link do card que o gestor escolheu pro supervisionado (fase "Primeiro Card") — null enquanto
+// não enviado ainda (é o que trava os passos da fase, ver GET /users/{id}/card-link).
+app.MapGet("/gestor/usuarios/{usuarioId:guid}/card-link", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var cardLink = await db.CardLinks.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
+    return Results.Ok(new { Url = cardLink?.Url });
+})
+   .WithName("GetCardLinkSupervisionado")
+   .RequireAuthorization("Gestor");
+
+// Envia (ou reenvia/sobrescreve — 1 registro por pessoa, sem histórico) o link do card pro
+// supervisionado. Notifica ele com um link CLICÁVEL de rota interna (o sino já sabe navegar,
+// nenhuma mudança precisa no front pra esse caso — diferente do link externo do PR).
+app.MapPut("/gestor/usuarios/{usuarioId:guid}/card-link", async (
+    Guid usuarioId, CardLinkRequest req, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var url = req.Url?.Trim() ?? string.Empty;
+    if (string.IsNullOrWhiteSpace(url))
+    {
+        return Results.BadRequest(new { erro = "Informe o link do card." });
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var existente = await db.CardLinks.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
+    if (existente is null)
+    {
+        db.CardLinks.Add(new CardLink { UsuarioId = usuarioId, EnviadoPorGestorId = gestorId, Url = url });
+    }
+    else
+    {
+        existente.Url = url;
+        existente.EnviadoPorGestorId = gestorId;
+        existente.EnviadoEm = DateTime.UtcNow;
+    }
+
+    var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
+    db.Notificacoes.Add(new Notificacao
+    {
+        UsuarioId = usuarioId,
+        Mensagem = $"{gestorNome} liberou seu primeiro card!",
+        AutorId = gestorId,
+        Link = "/fase/" + Uri.EscapeDataString("Primeiro Card"),
+    });
+
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("EnviarCardLink")
    .RequireAuthorization("Gestor");
 
 // Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
@@ -1249,7 +1424,8 @@ app.MapDelete("/notificacoes", async (ClaimsPrincipal user, AppDbContext db) =>
 
 // Login demo: get-or-create por email + emite JWT (token com expiração).
 // Cadastro (auto-serviço): nome + email + senha → cria a conta e já loga.
-app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, TokenService tokens, IConfiguration config) =>
+app.MapPost("/auth/register", async (
+    RegisterRequest req, AppDbContext db, TokenService tokens, IConfiguration config, EmailSender emailSender) =>
 {
     if (string.IsNullOrWhiteSpace(req.Nome))
     {
@@ -1282,14 +1458,55 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
     var ehGestorPorConfig = gestores.Any(g => string.Equals(g, email!.Value, StringComparison.OrdinalIgnoreCase));
     var ehGestorPorLista = await db.EmailsAutorizadosGestor
         .AnyAsync(e => e.Email == email!.Value);
+    // Cadastro por senha começa SEM confirmar (o domínio @agilean.com.br garante o formato, não
+    // que a caixa existe de verdade) — só libera login depois do código de 6 dígitos mandado por
+    // e-mail (ver EmailSender/`/auth/confirmar-email`). Login via Microsoft já nasce confirmado
+    // (default da entidade), não passa por aqui.
     var usuario = new Usuario
     {
         Nome = req.Nome.Trim(),
         Email = email!,
         SenhaHash = SenhaHasher.Hash(req.Senha),
         IsGestor = ehGestorPorConfig || ehGestorPorLista,
+        EmailConfirmado = false,
+        CodigoConfirmacaoEmail = CodigoConfirmacao.Gerar(),
+        CodigoConfirmacaoExpiraEm = DateTime.UtcNow.AddMinutes(CodigoConfirmacao.ValidoPorMinutos),
     };
     db.Usuarios.Add(usuario);
+    await db.SaveChangesAsync();
+
+    await emailSender.EnviarAsync(
+        usuario.Email.Value,
+        "Confirme seu e-mail — Bússola",
+        $"Olá, {usuario.Nome}!\n\n"
+            + $"Seu código de confirmação é: {usuario.CodigoConfirmacaoEmail}\n\n"
+            + $"Ele expira em {CodigoConfirmacao.ValidoPorMinutos} minutos.");
+
+    return Results.Ok(new { precisaConfirmarEmail = true, email = usuario.Email.Value });
+})
+   .WithName("Register");
+
+// Confirma o código de 6 dígitos mandado no cadastro — só depois disso o login por senha libera
+// (ver gate em `/auth/login`). Emite o token na hora (mesmo efeito de um login bem-sucedido).
+app.MapPost("/auth/confirmar-email", async (ConfirmarEmailRequest req, AppDbContext db, TokenService tokens) =>
+{
+    if (!Email.TryCreate(req.Email, out var email))
+    {
+        return Results.BadRequest(new { erro = "Email inválido." });
+    }
+
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
+    if (usuario is null || usuario.EmailConfirmado
+        || usuario.CodigoConfirmacaoEmail != req.Codigo.Trim()
+        || usuario.CodigoConfirmacaoExpiraEm is null
+        || usuario.CodigoConfirmacaoExpiraEm < DateTime.UtcNow)
+    {
+        return Results.BadRequest(new { erro = "Código inválido ou expirado." });
+    }
+
+    usuario.EmailConfirmado = true;
+    usuario.CodigoConfirmacaoEmail = null;
+    usuario.CodigoConfirmacaoExpiraEm = null;
     await db.SaveChangesAsync();
 
     var (token, expiraEm) = tokens.Emitir(usuario);
@@ -1300,7 +1517,30 @@ app.MapPost("/auth/register", async (RegisterRequest req, AppDbContext db, Token
         usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
     });
 })
-   .WithName("Register");
+   .WithName("ConfirmarEmail");
+
+// Manda um código novo (substitui o anterior) — usado quando o e-mail não chega a tempo/expira.
+// Resposta genérica sempre (não vaza se o e-mail tem conta ou já está confirmado).
+app.MapPost("/auth/reenviar-codigo", async (ReenviarCodigoRequest req, AppDbContext db, EmailSender emailSender) =>
+{
+    if (Email.TryCreate(req.Email, out var email))
+    {
+        var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email);
+        if (usuario is not null && !usuario.EmailConfirmado)
+        {
+            usuario.CodigoConfirmacaoEmail = CodigoConfirmacao.Gerar();
+            usuario.CodigoConfirmacaoExpiraEm = DateTime.UtcNow.AddMinutes(CodigoConfirmacao.ValidoPorMinutos);
+            await db.SaveChangesAsync();
+            await emailSender.EnviarAsync(
+                usuario.Email.Value,
+                "Seu novo código — Bússola",
+                $"Seu novo código de confirmação é: {usuario.CodigoConfirmacaoEmail}\n\n"
+                    + $"Ele expira em {CodigoConfirmacao.ValidoPorMinutos} minutos.");
+        }
+    }
+    return Results.Ok(new { ok = true });
+})
+   .WithName("ReenviarCodigoConfirmacao");
 
 // Login: verifica e-mail + senha.
 app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenService tokens, IConfiguration config) =>
@@ -1316,6 +1556,16 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     if (usuario is null || !usuario.Ativo || !SenhaHasher.Verificar(req.Senha, usuario.SenhaHash))
     {
         return Results.Json(new { erro = "E-mail ou senha inválidos." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    // Senha certa mas e-mail ainda não confirmado — a pessoa já provou que é dona da conta (acertou
+    // a senha), então dá pra ser específico aqui sem vazar nada que ela não soubesse. `flag` própria
+    // (não é só o texto do erro) pro front decidir levar direto pra tela de código.
+    if (!usuario.EmailConfirmado)
+    {
+        return Results.Json(
+            new { erro = "Confirme seu e-mail antes de entrar.", precisaConfirmarEmail = true },
+            statusCode: StatusCodes.Status403Forbidden);
     }
 
     // Concede o papel de gestor se o e-mail está na lista do appsettings (config só ADICIONA o
@@ -1569,11 +1819,19 @@ app.MapGet("/users/{id:guid}/progress", async (Guid id, ClaimsPrincipal user, Ap
         return Results.Forbid();
     }
 
-    var concluidos = await db.PassosConcluidos
-        .Where(passo => passo.UsuarioId == id)
-        .Select(passo => passo.OnboardingStepId)
-        .ToListAsync();
-    return Results.Ok(concluidos);
+    // `Completos` conta qualquer passo com registro (mesmo critério de sempre, é o que faz a
+    // barra de progresso da fase/Jornada "sentir" o envio da comprovação como avanço — e sentir o
+    // cancelamento como retrocesso, já que some o registro). `Pendentes` é o subconjunto ainda
+    // aguardando o gestor (pediu correção OU aguardando primeira avaliação) — quem usa (front)
+    // tira esses de dentro de `Completos` na hora de decidir se a FASE/Jornada fechou de verdade
+    // (só conta 100% fechado depois da aprovação; a barra numérica já subiu antes disso).
+    var registros = await db.PassosConcluidos.Where(passo => passo.UsuarioId == id).ToListAsync();
+    var completos = registros.Select(p => p.OnboardingStepId).ToList();
+    var pendentes = registros
+        .Where(p => p.PrecisaCorrecao || p.AguardandoConfirmacao)
+        .Select(p => p.OnboardingStepId)
+        .ToList();
+    return Results.Ok(new { Completos = completos, Pendentes = pendentes });
 })
    .WithName("GetProgresso")
    .RequireAuthorization();
@@ -1634,38 +1892,51 @@ app.MapPost("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid step
     }
     else
     {
-        db.PassosConcluidos.Add(new PassoConcluido { UsuarioId = id, OnboardingStepId = stepId, Evidencia = evidencia });
+        // O passo que fecha a trilha inteira (o único com comprovação/PR, literalmente o de maior
+        // Order do sistema — mesmo critério do front, `ultimoItemDaTrilha`) entra direto no ciclo
+        // de revisão do gestor: aguardando a primeira avaliação dele, mesmo sem nunca ter pedido
+        // correção nenhuma.
+        var maiorOrder = await db.OnboardingSteps.MaxAsync(s => (int?)s.Order) ?? -1;
+        var stepDoRegistro = await db.OnboardingSteps.FindAsync(stepId);
+        var exigeAvaliacaoDoGestor = stepDoRegistro is not null && stepDoRegistro.Order == maiorOrder;
+
+        db.PassosConcluidos.Add(new PassoConcluido
+        {
+            UsuarioId = id,
+            OnboardingStepId = stepId,
+            Evidencia = evidencia,
+            AguardandoConfirmacao = exigeAvaliacaoDoGestor,
+        });
         await db.SaveChangesAsync();
 
-        // Só avisa o gestor (sino sempre; Teams só na fase "Primeiro Card") quando a FASE
-        // inteira do passo é concluída.
         var usuario = await db.Usuarios.FindAsync(id);
         if (usuario?.GestorId is Guid gestorId)
         {
-            var step = await db.OnboardingSteps.Include(s => s.Fase).FirstOrDefaultAsync(s => s.Id == stepId);
-            if (step is not null)
+            // Esse aviso é SEPARADO do de "fase concluída" abaixo — enviar a comprovação não fecha
+            // mais a fase sozinho (só a aprovação do gestor fecha, ver AguardandoConfirmacao), mas
+            // o gestor precisa saber NA HORA que tem um PR esperando ele, senão ninguém nunca
+            // saberia que precisa entrar e avaliar. `?destaque=primeiro-card` faz a tela do
+            // supervisionado abrir o dropdown certo e piscar pra ele ver onde é.
+            if (exigeAvaliacaoDoGestor)
             {
-                var idsDaFase = await db.OnboardingSteps
-                    .Where(s => s.FaseId == step.FaseId)
-                    .Select(s => s.Id)
-                    .ToListAsync();
-                var concluidosDaFase = await db.PassosConcluidos
-                    .CountAsync(p => p.UsuarioId == id && idsDaFase.Contains(p.OnboardingStepId));
-
-                if (idsDaFase.Count > 0 && concluidosDaFase >= idsDaFase.Count)
+                var msgEnviou = $"{usuario.Nome} enviou a comprovação do Primeiro Card — aguardando sua avaliação.";
+                db.Notificacoes.Add(new Notificacao
                 {
-                    var msg = $"{usuario.Nome} concluiu a fase {step.Fase.Nome}.";
-                    db.Notificacoes.Add(new Notificacao { UsuarioId = gestorId, Mensagem = msg, AutorId = id });
-                    await db.SaveChangesAsync();
-
-                    // Teams fica só pro marco de liberar o Primeiro Card (decisão do Miguel
-                    // 2026-09-05) — as demais fases avisam só no sino, sem barulho no Teams.
-                    if (step.Fase.Nome == "Primeiro Card")
-                    {
-                        await teams.EnviarAsync(msg);
-                    }
-                }
+                    UsuarioId = gestorId,
+                    Mensagem = msgEnviou,
+                    AutorId = id,
+                    Link = $"/supervisionado/{id}?destaque=primeiro-card",
+                });
+                await db.SaveChangesAsync();
+                await teams.EnviarAsync(msgEnviou);
             }
+
+            // Só avisa o gestor (sino sempre; Teams só na fase "Primeiro Card") quando a FASE
+            // inteira do passo é concluída — se esse passo entrou aguardando avaliação do gestor
+            // (`exigeAvaliacaoDoGestor` acima), a fase NÃO conta como completa ainda (a função
+            // abaixo já filtra por `!PrecisaCorrecao && !AguardandoConfirmacao`); só dispara de
+            // fato quando o gestor aprovar (ver ConfirmarCorrecaoPasso, que chama a mesma função).
+            await NotificarSeFaseCompletaAsync(db, id, usuario.Nome, gestorId, stepId, evidencia);
         }
     }
 
@@ -1688,6 +1959,21 @@ app.MapDelete("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid st
     if (passo is not null)
     {
         db.PassosConcluidos.Remove(passo);
+
+        // Cancelar o envio do passo que exige avaliação do gestor (o único com esse ciclo de
+        // revisão) invalida qualquer notificação que já tinha avisado ele sobre esse PR
+        // (comprovação enviada, corrigido, fase concluída) — sem isso, ele clicaria numa
+        // notificação velha e não acharia mais nada pra revisar (a comprovação já sumiu).
+        var maiorOrder = await db.OnboardingSteps.MaxAsync(s => (int?)s.Order) ?? -1;
+        var stepDoPasso = await db.OnboardingSteps.FindAsync(stepId);
+        if (stepDoPasso is not null && stepDoPasso.Order == maiorOrder)
+        {
+            var notificacoesObsoletas = await db.Notificacoes
+                .Where(n => n.AutorId == id && n.Link == $"/supervisionado/{id}?destaque=primeiro-card")
+                .ToListAsync();
+            db.Notificacoes.RemoveRange(notificacoesObsoletas);
+        }
+
         await db.SaveChangesAsync();
     }
 
@@ -1710,9 +1996,183 @@ app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepI
     {
         Concluido = registro is not null,
         Evidencia = registro?.Evidencia ?? string.Empty,
+        PrecisaCorrecao = registro?.PrecisaCorrecao ?? false,
+        QtdCorrecoes = registro?.QtdCorrecoes ?? 0,
+        AguardandoConfirmacao = registro?.AguardandoConfirmacao ?? false,
     });
 })
    .WithName("GetComprovacaoPasso")
+   .RequireAuthorization();
+
+// Gestor pede correção no PR já enviado como comprovação (os comentários em si ficam no Bitbucket
+// — isso aqui é só o status/aviso). Só o gestor liga esse flag; só o colaborador desliga (endpoint
+// abaixo), depois de corrigir e atualizar a MESMA branch/PR.
+app.MapPut("/gestor/usuarios/{usuarioId:guid}/passos/{stepId:guid}/pedir-correcao", async (
+    Guid usuarioId, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var registro = await db.PassosConcluidos
+        .FirstOrDefaultAsync(p => p.UsuarioId == usuarioId && p.OnboardingStepId == stepId);
+    if (registro is null)
+    {
+        return Results.NotFound(new { erro = "Esse passo ainda não foi concluído/tem comprovação." });
+    }
+    var step = await db.OnboardingSteps.FindAsync(stepId);
+    if (step is null)
+    {
+        return Results.NotFound(new { erro = "Passo não encontrado." });
+    }
+
+    registro.PrecisaCorrecao = true;
+    registro.AguardandoConfirmacao = false;
+
+    var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
+    db.Notificacoes.Add(new Notificacao
+    {
+        UsuarioId = usuarioId,
+        Mensagem = $"{gestorNome} pediu uma correção no seu PR do Primeiro Card — confira os comentários no Bitbucket.",
+        AutorId = gestorId,
+        // A rota e por TITULO, nao por Id (ver hrefDoItem em JornadaView.tsx).
+        Link = $"/passo/{Uri.EscapeDataString(step.Title)}",
+    });
+
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("PedirCorrecaoPasso")
+   .RequireAuthorization("Gestor");
+
+// Colaborador marca que já corrigiu (fez push na mesma branch/PR) — avisa o gestor que já pode
+// conferir de novo. Só o colaborador (dono da comprovação) pode fazer essa transição.
+app.MapPut("/users/{id:guid}/progress/{stepId:guid}/corrigido", async (
+    Guid id, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
+    var registro = await db.PassosConcluidos
+        .FirstOrDefaultAsync(p => p.UsuarioId == id && p.OnboardingStepId == stepId);
+    if (registro is null)
+    {
+        return Results.NotFound(new { erro = "Esse passo ainda não foi concluído/tem comprovação." });
+    }
+
+    registro.PrecisaCorrecao = false;
+    registro.QtdCorrecoes += 1;
+    registro.AguardandoConfirmacao = true;
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario?.GestorId is Guid gestorId)
+    {
+        var msg = $"{usuario.Nome} marcou o PR do Primeiro Card como corrigido — confira e confirme.";
+        db.Notificacoes.Add(new Notificacao
+        {
+            UsuarioId = gestorId,
+            Mensagem = msg,
+            AutorId = id,
+            Link = $"/supervisionado/{id}?destaque=primeiro-card",
+        });
+        await db.SaveChangesAsync();
+
+        // Mesmo critério de sempre: Teams é só pra avisar o GESTOR de marcos do Primeiro Card
+        // (chegou na fase, concluiu, e agora corrigiu) — nunca notifica o colaborador por lá.
+        await teams.EnviarAsync(msg);
+        return Results.NoContent();
+    }
+
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("MarcarCorrigido")
+   .RequireAuthorization();
+
+// Gestor confere a correção que o colaborador marcou e confirma que está tudo certo de verdade —
+// fecha o ciclo (AguardandoConfirmacao = false) e avisa o colaborador. Se não estiver bom, o gestor
+// usa o "pedir correção" de novo em vez desse endpoint.
+app.MapPut("/gestor/usuarios/{usuarioId:guid}/passos/{stepId:guid}/confirmar", async (
+    Guid usuarioId, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var alvo = await db.Usuarios.FindAsync(usuarioId);
+    if (alvo is null || alvo.GestorId != gestorId)
+    {
+        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+    }
+
+    var registro = await db.PassosConcluidos
+        .FirstOrDefaultAsync(p => p.UsuarioId == usuarioId && p.OnboardingStepId == stepId);
+    if (registro is null)
+    {
+        return Results.NotFound(new { erro = "Esse passo ainda não foi concluído/tem comprovação." });
+    }
+    var step = await db.OnboardingSteps.FindAsync(stepId);
+    if (step is null)
+    {
+        return Results.NotFound(new { erro = "Passo não encontrado." });
+    }
+    // Idempotente: se já não tava aguardando (aprovado de novo por engano, duplo clique etc.), não
+    // reenvia notificação nem reavalia a fase de novo.
+    if (!registro.AguardandoConfirmacao)
+    {
+        return Results.NoContent();
+    }
+
+    registro.AguardandoConfirmacao = false;
+
+    var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
+    // Só fala em "correção" se já teve pelo menos um ciclo de pedir-corrigir — na primeira
+    // avaliação (nunca pediu correção nenhuma) isso soaria estranho, já que nada foi corrigido.
+    var mensagemAprovacao = registro.QtdCorrecoes > 0
+        ? $"{gestorNome} aprovou a correção do seu PR do Primeiro Card — tudo certo!"
+        : $"{gestorNome} aprovou o seu PR do Primeiro Card — tudo certo!";
+    db.Notificacoes.Add(new Notificacao
+    {
+        UsuarioId = usuarioId,
+        Mensagem = mensagemAprovacao,
+        AutorId = gestorId,
+        // A rota e por TITULO, nao por Id (ver hrefDoItem em JornadaView.tsx).
+        Link = $"/passo/{Uri.EscapeDataString(step.Title)}",
+    });
+    await db.SaveChangesAsync();
+
+    // A aprovação pode ser exatamente o que faltava pra fechar a fase Primeiro Card (e a Jornada
+    // inteira) — mesma checagem/notificação de quando um passo comum é concluído.
+    await NotificarSeFaseCompletaAsync(db, usuarioId, alvo.Nome, gestorId, stepId, registro.Evidencia);
+
+    return Results.NoContent();
+})
+   .WithName("ConfirmarCorrecaoPasso")
+   .RequireAuthorization("Gestor");
+
+// Leitura própria (colaborador) do link do card — usada pra saber se a fase Primeiro Card já
+// libera os passos ou se ainda está esperando o gestor mandar (null = ainda esperando).
+app.MapGet("/users/{id:guid}/card-link", async (Guid id, ClaimsPrincipal user, AppDbContext db) =>
+{
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var userId) || userId != id)
+    {
+        return Results.Forbid();
+    }
+
+    var cardLink = await db.CardLinks.FirstOrDefaultAsync(c => c.UsuarioId == id);
+    return Results.Ok(new { Url = cardLink?.Url });
+})
+   .WithName("GetMeuCardLink")
    .RequireAuthorization();
 
 app.Run();
@@ -1721,6 +2181,8 @@ app.Run();
 record LoginRequest(string Email, string Senha);
 record RegisterRequest(string Nome, string Email, string Senha);
 record MicrosoftLoginRequest(string AccessToken);
+record ConfirmarEmailRequest(string Email, string Codigo);
+record ReenviarCodigoRequest(string Email);
 
 // Só os campos que a gente usa da resposta do Microsoft Graph `GET /me`.
 record MicrosoftGraphMe(string? Mail, string? UserPrincipalName, string? DisplayName);
@@ -1755,6 +2217,7 @@ record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
 record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
 record MarcarAcessoRequest(bool Concluido);
+record CardLinkRequest(string? Url);
 record PromoverUsuarioRequest(bool IsGestor);
 record AtivarUsuarioRequest(bool Ativo);
 record EmailAutorizadoRequest(string Email);
