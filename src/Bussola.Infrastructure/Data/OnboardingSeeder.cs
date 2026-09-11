@@ -17,9 +17,9 @@ public static class OnboardingSeeder
         ![Onboarding Agilean — nosso hub de cultura vivo](/onboarding/boas-vindas.png)
 
         Hey, novo Agilean lover! Sua chegada aqui vai ser leve, acolhedora e ágil — a gente já
-        reuniu tudo o que você precisa saber pra começar com o pé direito.
+        reuniu tudo o que você precisa saber para começar com o pé direito.
 
-        No seu 1º dia tem um **Check-in** (um bate-papo pra gente te conhecer melhor) e a
+        No seu 1º dia tem um **Check-in** (um bate-papo para a gente te conhecer melhor) e a
         **apresentação do seu padrinho/madrinha** — a pessoa que vai te acompanhar de perto nesse
         começo. Em caso de dúvida, é só chamar a gente!
 
@@ -29,7 +29,7 @@ public static class OnboardingSeeder
         A **Agilean** é uma empresa de tecnologia voltada para a construção civil, que nasceu com o
         propósito de transformar a gestão de obras por meio da digitalização e da filosofia **Lean**.
         Temos clientes em 22 estados, mas é em **Fortaleza** que a mágica acontece — é aqui que
-        construímos, todo dia, soluções pra aumentar produtividade, reduzir desperdício e apoiar
+        construímos, todo dia, soluções para aumentar produtividade, reduzir desperdício e apoiar
         construtoras na entrega de obras mais eficientes.
 
         ## Missão
@@ -42,7 +42,7 @@ public static class OnboardingSeeder
         fim de 2027.
 
         > "Parabéns pelo nível de Lean Construction que a Agilean possibilita para as empresas!"
-        > — **Lauri Koskela**, criador do Lean Construction, pro André Quinderé (CEO da Agilean).
+        > — **Lauri Koskela**, criador do Lean Construction, para André Quinderé (CEO da Agilean).
 
         ![André Quinderé (CEO) com Lauri Koskela, criador do Lean Construction](/onboarding/lean-reconhecimento.png)
         """,
@@ -64,8 +64,8 @@ public static class OnboardingSeeder
           produtividade, folha de produção. *(é o produto do seu squad!)*
 
         ## Nossas soluções
-        Pensadas pra cada fase de evolução do modelo de gestão Lean do cliente: **Essencial**
-        (primeiros passos), **Escala** (amplia pra todos os canteiros), **Maestria** (qualidade
+        Pensadas para cada fase de evolução do modelo de gestão Lean do cliente: **Essencial**
+        (primeiros passos), **Escala** (amplia para todos os canteiros), **Maestria** (qualidade
         integrada ao fluxo) e **Completo** (produtividade máxima, os 3 produtos juntos).
         """,
         [3] = """
@@ -191,7 +191,7 @@ public static class OnboardingSeeder
         - **projects / contract** — entram como **submódulos** do api.
 
         O `api` aponta para um commit específico de cada submódulo — por isso "bump de submódulo"
-        aparece no fluxo de git mais pra frente.
+        aparece no fluxo de git mais para a frente.
         """,
         [9] = """
         ## Clone os repositórios
@@ -232,7 +232,7 @@ public static class OnboardingSeeder
         1. Crie a branch a partir do **support**.
         2. Implemente e commite (`feat:` para melhoria, `fix:` para bug).
         3. **Rebase** no `support` antes de subir.
-        4. Se mexeu num submódulo, faça o **bump** no `api` (aponta pro novo commit).
+        4. Se mexeu num submódulo, faça o **bump** no `api` (aponta para o novo commit).
         5. `git push --force-with-lease` (nunca `--force` puro).
         """,
         [13] = """
@@ -304,7 +304,7 @@ public static class OnboardingSeeder
         depois disso, você vai ver um aviso aqui no Bússola (no seu último passo), com os
         comentários dele no próprio PR, no Bitbucket. Corrija, teste localmente e dê push de novo
         na MESMA branch (o PR e o link continuam os mesmos) — depois, volte aqui no Bússola e
-        marque que já corrigiu, pra avisar seu gestor.
+        marque que já corrigiu, para avisar seu gestor.
         """,
         [20] = """
         ## Merge + documente

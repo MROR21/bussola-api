@@ -196,7 +196,7 @@ async Task NotificarSeFaseCompletaAsync(
         : null;
     if (proximaFase?.Nome == "Primeiro Card")
     {
-        var msgChegou = $"{nomeColaborador} chegou na fase Primeiro Card! Hora de escolher um card pra ele(a).";
+        var msgChegou = $"{nomeColaborador} chegou na fase Primeiro Card! Hora de escolher um card para ele(a).";
         db.Notificacoes.Add(new Notificacao
         {
             UsuarioId = gestorId,
@@ -869,7 +869,7 @@ app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, C
 
     var usuario = await db.Usuarios.FindAsync(usuarioId);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
-    if (usuario.IsGestor) return Results.BadRequest(new { erro = "Não dá pra supervisionar um gestor." });
+    if (usuario.IsGestor) return Results.BadRequest(new { erro = "Não dá para supervisionar um gestor." });
 
     // Teto de supervisionados por gestor (pedido do Miguel 2026-09-11): um onboarding de verdade
     // (revisar PR, tirar dúvida, aprovar card) não escala bem além de poucas pessoas ao mesmo
@@ -1057,7 +1057,7 @@ app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRe
 
     if (req.IsGestor && !usuario.Ativo)
     {
-        return Results.BadRequest(new { erro = "Não dá pra tornar supervisor alguém com o acesso revogado." });
+        return Results.BadRequest(new { erro = "Não dá para tornar supervisor alguém com o acesso revogado." });
     }
 
     if (!req.IsGestor && await db.Usuarios.AnyAsync(u => u.GestorId == id))
@@ -1716,7 +1716,7 @@ app.MapPost("/perfil/api-tokens", async (CriarApiTokenRequest req, ClaimsPrincip
     }
     if (string.IsNullOrWhiteSpace(req.Nome))
     {
-        return Results.BadRequest(new { erro = "Dê um nome pro token (ex.: \"Claude Code\")." });
+        return Results.BadRequest(new { erro = "Dê um nome para o token (ex.: \"Claude Code\")." });
     }
 
     var valor = ApiTokenHasher.Gerar();

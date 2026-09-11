@@ -276,7 +276,7 @@ public static class FluxoSeeder
         tratada até ser resolvida.
 
         ## As três pontas
-        - **Cadastro e preparação da obra** — o que existe pra inspecionar (itens, checklists, mapas).
+        - **Cadastro e preparação da obra** — o que existe para inspecionar (itens, checklists, mapas).
         - **Inspeções (App)** — o registro em campo, feito por quem está na obra.
         - **Qualidade Admin (Portal)** — a criação e tramitação das inspeções, normais e mapeadas.
 
@@ -316,7 +316,7 @@ public static class FluxoSeeder
         > e o acompanhamento (reprogramação + medição) mostra o quanto a obra real se afasta do
         > planejado.
 
-        Comece pelos **Primeiros passos** (criar a estrutura) e depois siga pro **Planejamento**
+        Comece pelos **Primeiros passos** (criar a estrutura) e depois siga para o **Planejamento**
         e **Acompanhamento**, que são o ciclo que se repete a cada período.
         """,
         ["Primeiros passos no Agilean"] = """
@@ -369,20 +369,20 @@ public static class FluxoSeeder
                 Descricao = "Como o sistema é organizado: multi-repo, back e front.",
                 Conteudo = """
                 ## Arquitetura do sistema
-                Uma visão geral de como o sistema da Agilean é organizado — pra você saber *onde*
+                Uma visão geral de como o sistema da Agilean é organizado — para você saber *onde*
                 mexer antes de *como* mexer.
 
                 ## Multi-repositório
                 - **agilean_portal** — o front (React + TypeScript + Vite).
                 - **api** — o back (C# / .NET).
-                - **projects** e **contract** — entram como **submódulos** do `api` (que aponta pra
+                - **projects** e **contract** — entram como **submódulos** do `api` (que aponta para
                   um commit específico de cada; daí o "bump de submódulo").
 
                 ## Back (C# / .NET)
                 Organizado em **camadas** e no estilo **CQRS** (comandos escrevem, queries leem):
                 - **Query/Command** → **Handler** (a regra) → **Repository** (dados via **Dapper**).
                 - O banco devolve uma **View** (projeção SQL), que o **AutoMapper** converte na
-                  **Response** (o DTO que sai pra API). Fluxo mental: *View (banco) → AutoMapper →
+                  **Response** (o DTO que sai para a API). Fluxo mental: *View (banco) → AutoMapper →
                   Response (API)*.
                 - Regra de negócio mora no domínio/handler, **não** no controller.
 
@@ -390,13 +390,13 @@ public static class FluxoSeeder
                 - **Design System** próprio em `src/agilean-design-system` — reusar antes de criar.
                 - **Estilo:** Tailwind com tokens **`ads-*`** (tema troca sozinho); sem CSS custom.
                 - **Estado:** **Zustand** (sessão/obra) + **TanStack React Query** (dados do servidor).
-                - **Tabelas:** **AgGrid Enterprise v31** (locale PT) pras grids pesadas.
+                - **Tabelas:** **AgGrid Enterprise v31** (locale PT) para as grids pesadas.
                 - **Padrão de tela:** `context/` (estado) + `services/` (chamadas tipadas que
                   retornam `Result<T>` via `api()`) + hooks (`useColumns`, `useNomeDoHook`).
 
                 ## Como se conectam
                 O front chama a API por HTTP; a API lê/escreve via Dapper e devolve Responses. Front
-                e back são **desacoplados** — dá pra evoluir a tela com mock e, na integração, trocar
+                e back são **desacoplados** — dá para evoluir a tela com mock e, na integração, trocar
                 só o corpo do service.
 
                 > Onde mexer: tela/estilo → `agilean_portal`. Regra/dado → `api` (e o submódulo
@@ -415,14 +415,14 @@ public static class FluxoSeeder
                 3. No Bitbucket, abra o PR: **título** no padrão do commit, **descrição** do que muda.
                 4. Marque o **reviewer da semana**.
 
-                > Nada de placeholder — o PR é real e vai pra review.
+                > Nada de placeholder — o PR é real e vai para review.
                 """,
             },
             new()
             {
                 Categoria = "Git & PR",
                 Titulo = "Rebase no support",
-                Descricao = "Trazer sua branch pro topo do support antes de subir.",
+                Descricao = "Trazer sua branch para o topo do support antes de subir.",
                 Conteudo = """
                 ## Rebase no support
                 ```bash
@@ -437,10 +437,10 @@ public static class FluxoSeeder
             {
                 Categoria = "Git & PR",
                 Titulo = "Bump de submódulo",
-                Descricao = "Apontar o api pro novo commit do submódulo.",
+                Descricao = "Apontar o api para o novo commit do submódulo.",
                 Conteudo = """
                 ## Bump de submódulo
-                Quando você commita em `projects`/`contract`, o `api` precisa apontar pro novo commit:
+                Quando você commita em `projects`/`contract`, o `api` precisa apontar para o novo commit:
                 ```bash
                 cd api
                 git add projects            # ou contract
