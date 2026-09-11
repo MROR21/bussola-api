@@ -871,6 +871,20 @@ app.MapPost("/gestor/supervisionados/{usuarioId:guid}", async (Guid usuarioId, C
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
     if (usuario.IsGestor) return Results.BadRequest(new { erro = "Não dá pra supervisionar um gestor." });
 
+    // Teto de supervisionados por gestor (pedido do Miguel 2026-09-11): um onboarding de verdade
+    // (revisar PR, tirar dúvida, aprovar card) não escala bem além de poucas pessoas ao mesmo
+    // tempo. Conta só ATIVOS — mesmo critério de quem aparece em `/gestor/usuarios` (revogado sai
+    // da lista sem desvincular `GestorId`, então não deveria contar pro limite também).
+    const int limiteSupervisionados = 3;
+    var qtdAtual = await db.Usuarios.CountAsync(u => u.GestorId == gestorId && u.Ativo);
+    if (qtdAtual >= limiteSupervisionados)
+    {
+        return Results.BadRequest(new
+        {
+            erro = $"Você já tem {limiteSupervisionados} supervisionados — o máximo por gestor. Remova alguém antes de adicionar outro.",
+        });
+    }
+
     usuario.GestorId = gestorId;
     var gestorNome = user.FindFirstValue("nome") ?? "Seu gestor";
     db.Notificacoes.Add(new Notificacao
