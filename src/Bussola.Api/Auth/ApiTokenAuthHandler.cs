@@ -39,6 +39,10 @@ public class ApiTokenAuthHandler(
         {
             return AuthenticateResult.Fail("Token inválido.");
         }
+        if (registro.ExpiraEm is not null && registro.ExpiraEm < DateTime.UtcNow)
+        {
+            return AuthenticateResult.Fail("Token expirado.");
+        }
 
         var usuario = await db.Usuarios.FindAsync(registro.UsuarioId);
         if (usuario is null || !usuario.Ativo)

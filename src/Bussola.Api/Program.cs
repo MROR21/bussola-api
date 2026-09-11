@@ -1718,13 +1718,25 @@ app.MapPost("/perfil/api-tokens", async (CriarApiTokenRequest req, ClaimsPrincip
     {
         return Results.BadRequest(new { erro = "Dê um nome para o token (ex.: \"Claude Code\")." });
     }
+    // `ExpiraEm` vem do date picker do front, sempre no futuro — checagem aqui é defesa mesmo
+    // assim (o front já valida, mas a API não confia só nisso).
+    if (req.ExpiraEm is not null && req.ExpiraEm <= DateTime.UtcNow)
+    {
+        return Results.BadRequest(new { erro = "A data de expiração precisa ser no futuro." });
+    }
 
     var valor = ApiTokenHasher.Gerar();
-    var registro = new ApiToken { UsuarioId = userId, Nome = req.Nome.Trim(), TokenHash = ApiTokenHasher.Hash(valor) };
+    var registro = new ApiToken
+    {
+        UsuarioId = userId,
+        Nome = req.Nome.Trim(),
+        TokenHash = ApiTokenHasher.Hash(valor),
+        ExpiraEm = req.ExpiraEm,
+    };
     db.ApiTokens.Add(registro);
     await db.SaveChangesAsync();
 
-    return Results.Ok(new { registro.Id, registro.Nome, registro.CriadoEm, token = valor });
+    return Results.Ok(new { registro.Id, registro.Nome, registro.CriadoEm, registro.ExpiraEm, token = valor });
 })
    .WithName("CriarApiToken")
    .RequireAuthorization("Gestor");
@@ -1741,7 +1753,7 @@ app.MapGet("/perfil/api-tokens", async (ClaimsPrincipal user, AppDbContext db) =
     var tokens = await db.ApiTokens
         .Where(t => t.UsuarioId == userId)
         .OrderByDescending(t => t.CriadoEm)
-        .Select(t => new { t.Id, t.Nome, t.CriadoEm, t.UltimoUsoEm })
+        .Select(t => new { t.Id, t.Nome, t.CriadoEm, t.UltimoUsoEm, t.ExpiraEm })
         .ToListAsync();
     return Results.Ok(tokens);
 })
@@ -2283,7 +2295,7 @@ record RegisterRequest(string Nome, string Email, string Senha);
 record MicrosoftLoginRequest(string AccessToken);
 record ConfirmarEmailRequest(string Email, string Codigo);
 record ReenviarCodigoRequest(string Email);
-record CriarApiTokenRequest(string Nome);
+record CriarApiTokenRequest(string Nome, DateTime? ExpiraEm);
 
 // Só os campos que a gente usa da resposta do Microsoft Graph `GET /me`.
 record MicrosoftGraphMe(string? Mail, string? UserPrincipalName, string? DisplayName);

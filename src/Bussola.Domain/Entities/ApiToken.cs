@@ -12,4 +12,9 @@ public class ApiToken
     public string TokenHash { get; set; } = string.Empty;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? UltimoUsoEm { get; set; }
+
+    // Data escolhida por quem gerou o token, na criação (ver `/perfil/api-tokens`). Null = sem
+    // expiração (não é o padrão — o front sempre manda uma data — mas o campo aceita null pra não
+    // travar token antigo/gerado sem essa escolha).
+    public DateTime? ExpiraEm { get; set; }
 }
