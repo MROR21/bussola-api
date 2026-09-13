@@ -371,6 +371,17 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // --- Fluxos (Referência viva) ---
 
+// Lista pública de módulos (qualquer colaborador logado, mesmo padrão de GET /squads) — o Guia
+// pelo sistema precisa disso pra mostrar um módulo recém-criado MESMO sem nenhum fluxo dentro
+// ainda (antes só derivava os módulos a partir dos próprios fluxos, então um módulo vazio nunca
+// aparecia — via GuiasPage.tsx).
+app.MapGet("/modulos", async (AppDbContext db) =>
+    await db.Modulos.OrderBy(m => m.Order)
+        .Select(m => new { m.Id, m.Nome, m.Order, m.SquadId })
+        .ToListAsync())
+   .WithName("GetModulos")
+   .RequireAuthorization();
+
 // Lista todos os fluxos, ordenados. O Guia pelo sistema é aberto a QUALQUER colaborador logado —
 // não filtra por squad nem por atribuição (decisão de produto: o repositório é de todos; o que é
 // específico do squad entra na jornada, não como restrição de acesso).
