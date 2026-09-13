@@ -1232,9 +1232,11 @@ app.MapDelete("/admin/squads/{id:guid}", async (Guid id, AppDbContext db) =>
    .RequireAuthorization("Gestor");
 
 // Lista todo mundo (não só os supervisionados de quem chama) — a tela "Usuários" do admin usa isso
-// pra decidir quem promover/demover.
+// pra decidir quem promover/demover. `GestorNome` denormalizado (mesmo padrão de GET
+// /gestor/disponiveis) pra mostrar quem já supervisiona cada um, direto na lista.
 app.MapGet("/admin/usuarios", async (AppDbContext db) =>
-    await db.Usuarios
+{
+    var usuarios = await db.Usuarios
         .OrderBy(u => u.Nome)
         .Select(u => new
         {
@@ -1248,7 +1250,23 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
             u.Ativo,
             u.GestorId,
         })
-        .ToListAsync())
+        .ToListAsync();
+    var gestorNomePorId = usuarios.Where(u => u.IsGestor).ToDictionary(u => u.Id, u => u.Nome);
+
+    return Results.Ok(usuarios.Select(u => new
+    {
+        u.Id,
+        u.Nome,
+        u.Email,
+        u.Cargo,
+        u.SquadId,
+        u.Squad,
+        u.IsGestor,
+        u.Ativo,
+        u.GestorId,
+        GestorNome = u.GestorId is Guid gid ? gestorNomePorId.GetValueOrDefault(gid) : null,
+    }));
+})
    .WithName("AdminGetUsuarios")
    .RequireAuthorization("Gestor");
 
