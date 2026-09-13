@@ -870,15 +870,34 @@ app.MapPut("/gestor/usuarios/{usuarioId:guid}/card-link", async (
    .WithName("EnviarCardLink")
    .RequireAuthorization("Gestor");
 
-// Colaboradores disponíveis pra virar supervisionado (ainda sem gestor).
-app.MapGet("/gestor/disponiveis", async (AppDbContext db) =>
+// Todo colaborador que não é gestor E ainda não é supervisionado do CALLER — inclui quem já tem um
+// OUTRO gestor vinculado (com o nome dele denormalizado em `GestorNome`), não só quem está livre.
+// Antes escondia quem já era supervisionado de qualquer gestor; agora mostra essa relação pra quem
+// for adicionar decidir com essa informação (ver POST /gestor/supervisionados, que sobrescreve o
+// vínculo sem confirmação extra no back — o front avisa antes de deixar confirmar).
+app.MapGet("/gestor/disponiveis", async (ClaimsPrincipal user, AppDbContext db) =>
 {
+    if (!Guid.TryParse(user.FindFirstValue("sub"), out var callerId))
+    {
+        return Results.Unauthorized();
+    }
+
     var usuarios = await db.Usuarios
-        .Where(u => !u.IsGestor && u.GestorId == null)
+        .Where(u => !u.IsGestor && u.GestorId != callerId)
         .OrderBy(u => u.Nome)
         .ToListAsync();
+    var gestorNomePorId = await db.Usuarios
+        .Where(u => u.IsGestor)
+        .ToDictionaryAsync(u => u.Id, u => u.Nome);
 
-    return Results.Ok(usuarios.Select(u => new { u.Id, u.Nome, Email = u.Email.Value, u.Cargo }));
+    return Results.Ok(usuarios.Select(u => new
+    {
+        u.Id,
+        u.Nome,
+        Email = u.Email.Value,
+        u.Cargo,
+        GestorNome = u.GestorId is Guid gid ? gestorNomePorId.GetValueOrDefault(gid) : null,
+    }));
 })
    .WithName("GetGestorDisponiveis")
    .RequireAuthorization("Gestor");
@@ -1265,11 +1284,11 @@ app.MapPut("/admin/usuarios/{id:guid}/gestor", async (Guid id, PromoverUsuarioRe
    .RequireAuthorization("Gestor");
 
 // Revoga/reativa o acesso de um usuário (ex.: funcionário desligado). Mesma regra de guarda do
-// papel de gestor: nunca a própria pessoa se revoga. Quando o alvo já tem um gestor vinculado, só
-// ESSE gestor pode mexer no acesso dele (pedido explícito — antes qualquer gestor podia revogar
-// supervisionado de outro); sem gestor vinculado, qualquer gestor pode (caso de off-boarding geral,
-// sem dono específico ainda). Revogar NÃO desvincula `GestorId` — só esconde da lista de
-// supervisionados (ver GET /gestor/usuarios); reativar traz de volta pro mesmo gestor sozinho.
+// papel de gestor: nunca a própria pessoa se revoga. Qualquer gestor pode mexer no acesso de
+// QUALQUER usuário (decisão explícita — antes só o gestor vinculado podia, mas isso travava o
+// off-boarding sempre que o dono específico não estava disponível). Revogar NÃO desvincula
+// `GestorId` — só esconde da lista de supervisionados (ver GET /gestor/usuarios); reativar traz de
+// volta pro mesmo gestor sozinho.
 app.MapPut("/admin/usuarios/{id:guid}/ativo", async (Guid id, AtivarUsuarioRequest req, ClaimsPrincipal caller, AppDbContext db) =>
 {
     if (!Guid.TryParse(caller.FindFirstValue("sub"), out var callerId) || callerId == id)
@@ -1279,11 +1298,6 @@ app.MapPut("/admin/usuarios/{id:guid}/ativo", async (Guid id, AtivarUsuarioReque
 
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
-
-    if (usuario.GestorId.HasValue && usuario.GestorId.Value != callerId)
-    {
-        return Results.BadRequest(new { erro = "Só o gestor desse supervisionado pode mexer no acesso dele." });
-    }
 
     usuario.Ativo = req.Ativo;
     await db.SaveChangesAsync();
