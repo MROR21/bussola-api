@@ -988,11 +988,19 @@ app.MapGet("/admin/modulos", async (AppDbContext db) =>
    .WithName("AdminGetModulos")
    .RequireAuthorization("Gestor");
 
-app.MapPost("/admin/modulos", async (ModuloRequest req, AppDbContext db) =>
+// Diferente do PUT (que continua só nome+ordem — ver ModuloRequest): a criação também escolhe a
+// categoria (squad vinculado, ou null pra "padrão do sistema"). Um módulo criado à mão NÃO precisa
+// nascer sem squad — o admin pode ligar direto a um squad já existente aqui, sem passar pelo fluxo
+// de "criar squad" (que já cria o módulo dele automaticamente, ver POST /admin/squads).
+app.MapPost("/admin/modulos", async (CriarModuloRequest req, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
+    if (req.SquadId is Guid sid && !await db.Squads.AnyAsync(s => s.Id == sid))
+    {
+        return Results.BadRequest(new { erro = "Squad inválido." });
+    }
 
-    var modulo = new Modulo { Nome = req.Nome.Trim(), Order = req.Order };
+    var modulo = new Modulo { Nome = req.Nome.Trim(), Order = req.Order, SquadId = req.SquadId };
     db.Modulos.Add(modulo);
     await db.SaveChangesAsync();
     return Results.Ok(modulo);
@@ -2473,6 +2481,9 @@ record TrailItemView(
 // Corpos do CRUD de admin (fases/passos/módulos/fluxos/squads).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
+// Só a criação escolhe o squad (categoria) — separado de ModuloRequest de propósito, pra um PUT
+// feito pelo fluxo genérico de editar nome/ordem nunca correr o risco de zerar o SquadId sem querer.
+record CriarModuloRequest(string Nome, Guid? SquadId, int Order);
 record SquadRequest(string Nome, string ModuloNome, int Order);
 record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
 record MarcarAcessoRequest(bool Concluido);
