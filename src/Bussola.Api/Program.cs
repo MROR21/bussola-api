@@ -1146,7 +1146,10 @@ app.MapPut("/admin/squads/{id:guid}", async (Guid id, SquadRequest req, AppDbCon
 
 app.MapDelete("/admin/squads/{id:guid}", async (Guid id, AppDbContext db) =>
 {
-    if (await db.Usuarios.AnyAsync(u => u.SquadId == id))
+    // Usuário revogado não conta pro bloqueio — o SquadId dele fica só como registro histórico
+    // (schema exige todo usuário ter um squad, então não dá pra zerar isso no revogar em si), mas
+    // ele não está mais "ativo" nesse squad pra nenhum efeito prático.
+    if (await db.Usuarios.AnyAsync(u => u.SquadId == id && u.Ativo))
     {
         return Results.BadRequest(new { erro = "Esse squad tem usuários vinculados — mova os usuários primeiro." });
     }
