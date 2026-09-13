@@ -1040,35 +1040,47 @@ app.MapGet("/squads", async (AppDbContext db) =>
    .WithName("GetSquads")
    .RequireAuthorization();
 
+// Devolve junto o nome do módulo vinculado (não o id — a tela de admin só precisa mostrar/editar
+// o nome, o vínculo em si não muda por aqui) pra tela conseguir mostrar/editar os dois nomes.
 app.MapGet("/admin/squads", async (AppDbContext db) =>
-    await db.Squads.OrderBy(s => s.Order).ToListAsync())
+    await db.Squads.OrderBy(s => s.Order)
+        .Select(s => new
+        {
+            s.Id,
+            s.Nome,
+            s.Order,
+            ModuloNome = db.Modulos.Where(m => m.SquadId == s.Id).Select(m => m.Nome).FirstOrDefault(),
+        })
+        .ToListAsync())
    .WithName("AdminGetSquads")
    .RequireAuthorization("Gestor");
 
-// Cria o Squad E o Módulo homônimo já vinculado, na mesma SaveChangesAsync — decisão de produto:
-// squad e módulo nascem juntos, sem passo manual extra pro admin (ver Modulo.SquadId). Nome de
-// Squad e de Modulo são únicos — se já existir um Módulo com esse nome (ex.: um "padrão do
-// sistema" criado à mão), a criação falha com 400 em vez de violar o índice único.
+// Cria o Squad E o Módulo vinculado, na mesma SaveChangesAsync — decisão de produto: squad e
+// módulo nascem juntos, sem passo manual extra pro admin (ver Modulo.SquadId). O nome do módulo
+// pode ser diferente do nome do squad (ex.: squad "SIGA", módulo "SIGA (desktop)") — nome de
+// Squad e de Modulo são únicos cada um no seu próprio universo.
 app.MapPost("/admin/squads", async (SquadRequest req, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
+    if (string.IsNullOrWhiteSpace(req.ModuloNome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
 
     var nome = req.Nome.Trim();
+    var moduloNome = req.ModuloNome.Trim();
     if (await db.Squads.AnyAsync(s => s.Nome == nome))
     {
         return Results.BadRequest(new { erro = "Já existe um squad com esse nome." });
     }
-    if (await db.Modulos.AnyAsync(m => m.Nome == nome))
+    if (await db.Modulos.AnyAsync(m => m.Nome == moduloNome))
     {
         return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
     }
 
     var squad = new Squad { Nome = nome, Order = req.Order };
-    var modulo = new Modulo { Nome = nome, Order = req.Order, SquadId = squad.Id };
+    var modulo = new Modulo { Nome = moduloNome, Order = req.Order, SquadId = squad.Id };
     db.Squads.Add(squad);
     db.Modulos.Add(modulo);
     await db.SaveChangesAsync();
-    return Results.Ok(new { squad.Id, squad.Nome, squad.Order, ModuloId = modulo.Id });
+    return Results.Ok(new { squad.Id, squad.Nome, squad.Order, ModuloId = modulo.Id, ModuloNome = modulo.Nome });
 })
    .WithName("AdminCreateSquad")
    .RequireAuthorization("Gestor");
@@ -1078,9 +1090,25 @@ app.MapPut("/admin/squads/{id:guid}", async (Guid id, SquadRequest req, AppDbCon
     var squad = await db.Squads.FindAsync(id);
     if (squad is null) return Results.NotFound(new { erro = "Squad não encontrado." });
     if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
+    if (string.IsNullOrWhiteSpace(req.ModuloNome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
 
-    squad.Nome = req.Nome.Trim();
+    var nome = req.Nome.Trim();
+    var moduloNome = req.ModuloNome.Trim();
+    if (await db.Squads.AnyAsync(s => s.Nome == nome && s.Id != id))
+    {
+        return Results.BadRequest(new { erro = "Já existe um squad com esse nome." });
+    }
+
+    var modulo = await db.Modulos.FirstOrDefaultAsync(m => m.SquadId == id);
+    if (modulo is not null && modulo.Nome != moduloNome
+        && await db.Modulos.AnyAsync(m => m.Nome == moduloNome && m.Id != modulo.Id))
+    {
+        return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+    }
+
+    squad.Nome = nome;
     squad.Order = req.Order;
+    if (modulo is not null) modulo.Nome = moduloNome;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
@@ -2445,7 +2473,7 @@ record TrailItemView(
 // Corpos do CRUD de admin (fases/passos/módulos/fluxos/squads).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
-record SquadRequest(string Nome, int Order);
+record SquadRequest(string Nome, string ModuloNome, int Order);
 record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
 record MarcarAcessoRequest(bool Concluido);
 record CardLinkRequest(string? Url);
