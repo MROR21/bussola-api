@@ -1063,30 +1063,51 @@ app.MapGet("/admin/squads", async (AppDbContext db) =>
    .WithName("AdminGetSquads")
    .RequireAuthorization("Gestor");
 
-// Cria o Squad E o Módulo vinculado, na mesma SaveChangesAsync — decisão de produto: squad e
-// módulo nascem juntos, sem passo manual extra pro admin (ver Modulo.SquadId). O nome do módulo
-// pode ser diferente do nome do squad (ex.: squad "SIGA", módulo "SIGA (desktop)") — nome de
-// Squad e de Modulo são únicos cada um no seu próprio universo.
+// Cria o Squad e vincula um Módulo, na mesma SaveChangesAsync — ou um módulo NOVO (nome em
+// `ModuloNome`, nasce junto do squad, ver Modulo.SquadId) ou um módulo "padrão do sistema" JÁ
+// EXISTENTE (id em `ModuloId`, ex.: adotar um módulo solitário que já tinha fluxos/documentação
+// pra dentro do squad novo) — nunca os dois ao mesmo tempo. O nome do módulo novo pode ser
+// diferente do nome do squad (ex.: squad "SIGA", módulo "SIGA (desktop)") — nome de Squad e de
+// Modulo são únicos cada um no seu próprio universo.
 app.MapPost("/admin/squads", async (SquadRequest req, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
-    if (string.IsNullOrWhiteSpace(req.ModuloNome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
 
     var nome = req.Nome.Trim();
-    var moduloNome = req.ModuloNome.Trim();
     if (await db.Squads.AnyAsync(s => s.Nome == nome))
     {
         return Results.BadRequest(new { erro = "Já existe um squad com esse nome." });
     }
-    if (await db.Modulos.AnyAsync(m => m.Nome == moduloNome))
+
+    Modulo modulo;
+    if (req.ModuloId is Guid moduloId)
     {
-        return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+        var existente = await db.Modulos.FindAsync(moduloId);
+        if (existente is null) return Results.BadRequest(new { erro = "Módulo não encontrado." });
+        if (existente.SquadId is not null)
+        {
+            return Results.BadRequest(new { erro = "Esse módulo já pertence a outro squad." });
+        }
+        modulo = existente;
+    }
+    else
+    {
+        if (string.IsNullOrWhiteSpace(req.ModuloNome))
+        {
+            return Results.BadRequest(new { erro = "Informe o nome do módulo, ou escolha um já existente." });
+        }
+        var moduloNome = req.ModuloNome.Trim();
+        if (await db.Modulos.AnyAsync(m => m.Nome == moduloNome))
+        {
+            return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+        }
+        modulo = new Modulo { Nome = moduloNome, Order = req.Order };
+        db.Modulos.Add(modulo);
     }
 
     var squad = new Squad { Nome = nome, Order = req.Order };
-    var modulo = new Modulo { Nome = moduloNome, Order = req.Order, SquadId = squad.Id };
+    modulo.SquadId = squad.Id;
     db.Squads.Add(squad);
-    db.Modulos.Add(modulo);
     await db.SaveChangesAsync();
     return Results.Ok(new { squad.Id, squad.Nome, squad.Order, ModuloId = modulo.Id, ModuloNome = modulo.Nome });
 })
@@ -2484,7 +2505,9 @@ record ModuloRequest(string Nome, int Order);
 // Só a criação escolhe o squad (categoria) — separado de ModuloRequest de propósito, pra um PUT
 // feito pelo fluxo genérico de editar nome/ordem nunca correr o risco de zerar o SquadId sem querer.
 record CriarModuloRequest(string Nome, Guid? SquadId, int Order);
-record SquadRequest(string Nome, string ModuloNome, int Order);
+// `ModuloNome` cria um módulo novo; `ModuloId` vincula um módulo "padrão do sistema" já existente
+// (só faz sentido no POST — o PUT continua só editando nome/ordem do vínculo já feito).
+record SquadRequest(string Nome, string? ModuloNome, int Order, Guid? ModuloId = null);
 record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
 record MarcarAcessoRequest(bool Concluido);
 record CardLinkRequest(string? Url);
