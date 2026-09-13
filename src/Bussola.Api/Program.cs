@@ -558,7 +558,9 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
     // Projeção em memória: Email é Value Object (não dá pra projetar .Value no SQL).
     var resultado = usuarios.Select(u =>
     {
-        var fluxosDoSquad = fluxosPorSquad.GetValueOrDefault(u.SquadId, new List<Guid>());
+        var fluxosDoSquad = u.SquadId is Guid squadId
+            ? fluxosPorSquad.GetValueOrDefault(squadId, new List<Guid>())
+            : new List<Guid>();
         var concluidosFluxo = fluxosConcluidosPorUsuario.GetValueOrDefault(u.Id, new HashSet<Guid>());
         var fluxosFeitos = fluxosDoSquad.Count(concluidosFluxo.Contains);
 
@@ -569,7 +571,7 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
             Email = u.Email.Value,
             u.Cargo,
             u.SquadId,
-            Squad = u.Squad.Nome,
+            Squad = u.Squad?.Nome,
             u.IsGestor,
             u.NivelamentoConcluido,
             PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0) + fluxosFeitos,
@@ -1146,9 +1148,10 @@ app.MapPut("/admin/squads/{id:guid}", async (Guid id, SquadRequest req, AppDbCon
 
 app.MapDelete("/admin/squads/{id:guid}", async (Guid id, AppDbContext db) =>
 {
-    // Usuário revogado não conta pro bloqueio — o SquadId dele fica só como registro histórico
-    // (schema exige todo usuário ter um squad, então não dá pra zerar isso no revogar em si), mas
-    // ele não está mais "ativo" nesse squad pra nenhum efeito prático.
+    // Usuário revogado não conta pro bloqueio (ver checagem abaixo, só considera ATIVO) — mas o
+    // FK dele pro squad ainda existe de verdade no banco (segunda trava Restrict em AppDbContext),
+    // então não basta ignorar a regra: o vínculo precisa ser desfeito de fato antes do delete (por
+    // isso SquadId é opcional em Usuario — só fica null nesse caso específico).
     if (await db.Usuarios.AnyAsync(u => u.SquadId == id && u.Ativo))
     {
         return Results.BadRequest(new { erro = "Esse squad tem usuários vinculados — mova os usuários primeiro." });
@@ -1165,6 +1168,11 @@ app.MapDelete("/admin/squads/{id:guid}", async (Guid id, AppDbContext db) =>
     var squad = await db.Squads.FindAsync(id);
     if (squad is not null)
     {
+        var usuariosRevogados = await db.Usuarios.Where(u => u.SquadId == id).ToListAsync();
+        foreach (var usuarioRevogado in usuariosRevogados)
+        {
+            usuarioRevogado.SquadId = null;
+        }
         db.Squads.Remove(squad);
         await db.SaveChangesAsync();
     }
@@ -1185,7 +1193,7 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
             Email = u.Email.Value,
             u.Cargo,
             u.SquadId,
-            Squad = u.Squad.Nome,
+            Squad = u.Squad != null ? u.Squad.Nome : null,
             u.IsGestor,
             u.Ativo,
             u.GestorId,

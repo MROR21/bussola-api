@@ -25,8 +25,12 @@ public class Usuario
     // semeia os squads no banco (Guid não aceita literal como o enum antigo aceitava) — os dois
     // pontos que criam Usuario (registro por senha e por Microsoft) resolvem explicitamente antes
     // de atribuir, ver Program.cs.
-    public Guid SquadId { get; set; }
-    public virtual Squad Squad { get; set; } = null!;
+    // Nullable: todo usuário ATIVO sempre tem um (nivelamento exige escolher um) — só vira null se
+    // o squad dele for apagado enquanto ele está com o acesso revogado (ver DELETE /admin/squads;
+    // apagar um squad com usuário ATIVO vinculado continua bloqueado, isso aqui só evita que um
+    // ex-colaborador prenda o squad pra sempre).
+    public Guid? SquadId { get; set; }
+    public virtual Squad? Squad { get; set; }
     public SkillLevel Frontend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Backend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Git { get; set; } = SkillLevel.Nenhum;
