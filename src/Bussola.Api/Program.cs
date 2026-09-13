@@ -312,7 +312,7 @@ app.MapPost("/onboarding/trail", async (Perfil perfil, ClaimsPrincipal user, App
     var steps = await db.OnboardingSteps.Include(step => step.Fase)
         .OrderBy(step => step.Fase.Order).ThenBy(step => step.Order).ToListAsync();
     var fluxosDoSquad = await db.Fluxos
-        .Where(fluxo => fluxo.Squad == usuario.Squad)
+        .Where(fluxo => fluxo.SquadId == usuario.SquadId)
         .OrderBy(fluxo => fluxo.Order)
         .ToListAsync();
 
@@ -383,7 +383,13 @@ app.MapGet("/fluxos", async (AppDbContext db) =>
             fluxo.Id,
             fluxo.Order,
             Modulo = fluxo.Modulo.Nome,
-            fluxo.Squad,
+            // Squad do MÓDULO (não do fluxo): a tela de Guias usa isso pra decidir se o módulo
+            // entra na categoria "Squads" ou "Padrões do sistema" — módulo com squad vinculado
+            // (ver Modulo.SquadId) cai em Squads, sem vínculo cai em Padrões do sistema.
+            ModuloSquadId = fluxo.Modulo.SquadId,
+            fluxo.SquadId,
+            Squad = fluxo.Squad != null ? fluxo.Squad.Nome : null,
+            fluxo.Tipo,
             fluxo.Categoria,
             fluxo.Titulo,
             fluxo.Descricao,
@@ -404,7 +410,10 @@ app.MapGet("/fluxos/{id:guid}", async (Guid id, AppDbContext db) =>
             f.Id,
             f.Order,
             Modulo = f.Modulo.Nome,
-            f.Squad,
+            ModuloSquadId = f.Modulo.SquadId,
+            f.SquadId,
+            Squad = f.Squad != null ? f.Squad.Nome : null,
+            f.Tipo,
             f.Categoria,
             f.Titulo,
             f.Descricao,
@@ -530,6 +539,7 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
     var usuarios = await db.Usuarios
         .Where(u => u.GestorId == gestorId && u.Ativo)
         .OrderBy(u => u.Nome)
+        .Include(u => u.Squad)
         .ToListAsync();
 
     // Os fluxos do squad de cada um também contam como parte da Jornada (fase "Conheça o
@@ -541,14 +551,14 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
             .ToListAsync())
         .GroupBy(f => f.UsuarioId)
         .ToDictionary(g => g.Key, g => g.Select(f => f.FluxoId).ToHashSet());
-    var fluxosPorSquad = (await db.Fluxos.Where(f => f.Squad != null).ToListAsync())
-        .GroupBy(f => f.Squad!.Value)
+    var fluxosPorSquad = (await db.Fluxos.Where(f => f.SquadId != null).ToListAsync())
+        .GroupBy(f => f.SquadId!.Value)
         .ToDictionary(g => g.Key, g => g.Select(f => f.Id).ToList());
 
     // Projeção em memória: Email é Value Object (não dá pra projetar .Value no SQL).
     var resultado = usuarios.Select(u =>
     {
-        var fluxosDoSquad = fluxosPorSquad.GetValueOrDefault(u.Squad, new List<Guid>());
+        var fluxosDoSquad = fluxosPorSquad.GetValueOrDefault(u.SquadId, new List<Guid>());
         var concluidosFluxo = fluxosConcluidosPorUsuario.GetValueOrDefault(u.Id, new HashSet<Guid>());
         var fluxosFeitos = fluxosDoSquad.Count(concluidosFluxo.Contains);
 
@@ -558,7 +568,8 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
             u.Nome,
             Email = u.Email.Value,
             u.Cargo,
-            u.Squad,
+            u.SquadId,
+            Squad = u.Squad.Nome,
             u.IsGestor,
             u.NivelamentoConcluido,
             PassosConcluidos = concluidosPorUsuario.GetValueOrDefault(u.Id, 0) + fluxosFeitos,
@@ -603,7 +614,7 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
     var fluxosConcluidos = (await db.FluxosConcluidos
         .Where(f => f.UsuarioId == usuarioId).Select(f => f.FluxoId).ToListAsync()).ToHashSet();
     var fluxosDoSquad = await db.Fluxos
-        .Where(fluxo => fluxo.Squad == alvo.Squad)
+        .Where(fluxo => fluxo.SquadId == alvo.SquadId)
         .OrderBy(fluxo => fluxo.Order)
         .ToListAsync();
 
@@ -684,7 +695,7 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
             f.Titulo,
             Modulo = f.Modulo.Nome,
             Concluido = concluidos.Contains(f.Id),
-            DoSquad = f.Squad == alvo.Squad,
+            DoSquad = f.SquadId == alvo.SquadId,
         });
 
     return Results.Ok(visiveis);
@@ -1021,6 +1032,87 @@ app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
    .WithName("AdminDeleteModulo")
    .RequireAuthorization("Gestor");
 
+// Lista pública (qualquer usuário autenticado) — usada pelo picker de squad no nivelamento, que
+// roda ANTES da pessoa virar gestor de qualquer coisa (ao contrário de Fase/Módulo, cuja lista só
+// o admin vê, aqui todo mundo precisa enxergar as opções pra se cadastrar).
+app.MapGet("/squads", async (AppDbContext db) =>
+    await db.Squads.OrderBy(s => s.Order).Select(s => new { s.Id, s.Nome }).ToListAsync())
+   .WithName("GetSquads")
+   .RequireAuthorization();
+
+app.MapGet("/admin/squads", async (AppDbContext db) =>
+    await db.Squads.OrderBy(s => s.Order).ToListAsync())
+   .WithName("AdminGetSquads")
+   .RequireAuthorization("Gestor");
+
+// Cria o Squad E o Módulo homônimo já vinculado, na mesma SaveChangesAsync — decisão de produto:
+// squad e módulo nascem juntos, sem passo manual extra pro admin (ver Modulo.SquadId). Nome de
+// Squad e de Modulo são únicos — se já existir um Módulo com esse nome (ex.: um "padrão do
+// sistema" criado à mão), a criação falha com 400 em vez de violar o índice único.
+app.MapPost("/admin/squads", async (SquadRequest req, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
+
+    var nome = req.Nome.Trim();
+    if (await db.Squads.AnyAsync(s => s.Nome == nome))
+    {
+        return Results.BadRequest(new { erro = "Já existe um squad com esse nome." });
+    }
+    if (await db.Modulos.AnyAsync(m => m.Nome == nome))
+    {
+        return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+    }
+
+    var squad = new Squad { Nome = nome, Order = req.Order };
+    var modulo = new Modulo { Nome = nome, Order = req.Order, SquadId = squad.Id };
+    db.Squads.Add(squad);
+    db.Modulos.Add(modulo);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { squad.Id, squad.Nome, squad.Order, ModuloId = modulo.Id });
+})
+   .WithName("AdminCreateSquad")
+   .RequireAuthorization("Gestor");
+
+app.MapPut("/admin/squads/{id:guid}", async (Guid id, SquadRequest req, AppDbContext db) =>
+{
+    var squad = await db.Squads.FindAsync(id);
+    if (squad is null) return Results.NotFound(new { erro = "Squad não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
+
+    squad.Nome = req.Nome.Trim();
+    squad.Order = req.Order;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminUpdateSquad")
+   .RequireAuthorization("Gestor");
+
+app.MapDelete("/admin/squads/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    if (await db.Usuarios.AnyAsync(u => u.SquadId == id))
+    {
+        return Results.BadRequest(new { erro = "Esse squad tem usuários vinculados — mova os usuários primeiro." });
+    }
+    if (await db.Fluxos.AnyAsync(f => f.SquadId == id))
+    {
+        return Results.BadRequest(new { erro = "Esse squad tem fluxos vinculados — mova ou apague os fluxos primeiro." });
+    }
+    if (await db.Modulos.AnyAsync(m => m.SquadId == id))
+    {
+        return Results.BadRequest(new { erro = "Esse squad tem um módulo vinculado — apague o módulo primeiro." });
+    }
+
+    var squad = await db.Squads.FindAsync(id);
+    if (squad is not null)
+    {
+        db.Squads.Remove(squad);
+        await db.SaveChangesAsync();
+    }
+    return Results.NoContent();
+})
+   .WithName("AdminDeleteSquad")
+   .RequireAuthorization("Gestor");
+
 // Lista todo mundo (não só os supervisionados de quem chama) — a tela "Usuários" do admin usa isso
 // pra decidir quem promover/demover.
 app.MapGet("/admin/usuarios", async (AppDbContext db) =>
@@ -1032,7 +1124,8 @@ app.MapGet("/admin/usuarios", async (AppDbContext db) =>
             u.Nome,
             Email = u.Email.Value,
             u.Cargo,
-            u.Squad,
+            u.SquadId,
+            Squad = u.Squad.Nome,
             u.IsGestor,
             u.Ativo,
             u.GestorId,
@@ -1286,7 +1379,9 @@ app.MapGet("/admin/fluxos", async (AppDbContext db) =>
         f.Id,
         f.Order,
         f.ModuloId,
-        f.Squad,
+        f.SquadId,
+        Squad = f.Squad != null ? f.Squad.Nome : null,
+        f.Tipo,
         f.Categoria,
         f.Titulo,
         f.Descricao,
@@ -1300,11 +1395,16 @@ app.MapPost("/admin/fluxos", async (FluxoRequest req, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(req.Titulo)) return Results.BadRequest(new { erro = "Informe o título do fluxo." });
     if (!await db.Modulos.AnyAsync(m => m.Id == req.ModuloId)) return Results.BadRequest(new { erro = "Módulo inválido." });
+    if (req.SquadId is Guid sid1 && !await db.Squads.AnyAsync(s => s.Id == sid1))
+    {
+        return Results.BadRequest(new { erro = "Squad inválido." });
+    }
 
     var fluxo = new Fluxo
     {
         ModuloId = req.ModuloId,
-        Squad = req.Squad,
+        SquadId = req.SquadId,
+        Tipo = req.Tipo,
         Categoria = req.Categoria,
         Order = req.Order,
         Titulo = req.Titulo.Trim(),
@@ -1325,9 +1425,14 @@ app.MapPut("/admin/fluxos/{id:guid}", async (Guid id, FluxoRequest req, AppDbCon
     if (fluxo is null) return Results.NotFound(new { erro = "Fluxo não encontrado." });
     if (string.IsNullOrWhiteSpace(req.Titulo)) return Results.BadRequest(new { erro = "Informe o título do fluxo." });
     if (!await db.Modulos.AnyAsync(m => m.Id == req.ModuloId)) return Results.BadRequest(new { erro = "Módulo inválido." });
+    if (req.SquadId is Guid sid2 && !await db.Squads.AnyAsync(s => s.Id == sid2))
+    {
+        return Results.BadRequest(new { erro = "Squad inválido." });
+    }
 
     fluxo.ModuloId = req.ModuloId;
-    fluxo.Squad = req.Squad;
+    fluxo.SquadId = req.SquadId;
+    fluxo.Tipo = req.Tipo;
     fluxo.Categoria = req.Categoria;
     fluxo.Order = req.Order;
     fluxo.Titulo = req.Titulo.Trim();
@@ -1498,12 +1603,17 @@ app.MapPost("/auth/register", async (
     // que a caixa existe de verdade) — só libera login depois do código de 6 dígitos mandado por
     // e-mail (ver EmailSender/`/auth/confirmar-email`). Login via Microsoft já nasce confirmado
     // (default da entidade), não passa por aqui.
+    // "Mão de Obra" é o squad padrão pra quem ainda não escolheu o seu (mesmo default que o antigo
+    // enum tinha, ordinal 0) — Guid não aceita um valor fixo no código, só existe depois que a
+    // migration semeia os squads no banco.
+    var squadPadrao = await db.Squads.FirstAsync(s => s.Nome == "Mão de Obra");
     var usuario = new Usuario
     {
         Nome = req.Nome.Trim(),
         Email = email!,
         SenhaHash = SenhaHasher.Hash(req.Senha),
         IsGestor = ehGestorPorConfig || ehGestorPorLista,
+        SquadId = squadPadrao.Id,
         EmailConfirmado = false,
         CodigoConfirmacaoEmail = CodigoConfirmacao.Gerar(),
         CodigoConfirmacaoExpiraEm = DateTime.UtcNow.AddMinutes(CodigoConfirmacao.ValidoPorMinutos),
@@ -1550,7 +1660,7 @@ app.MapPost("/auth/confirmar-email", async (ConfirmarEmailRequest req, AppDbCont
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.SquadId, usuario.IsGestor, usuario.Foto },
     });
 })
    .WithName("ConfirmarEmail");
@@ -1620,7 +1730,7 @@ app.MapPost("/auth/login", async (LoginRequest req, AppDbContext db, TokenServic
     {
         token,
         expiraEm,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.SquadId, usuario.IsGestor, usuario.Foto },
     });
 })
    .WithName("Login");
@@ -1668,11 +1778,13 @@ app.MapPost("/auth/microsoft", async (
     if (usuario is null)
     {
         var ehGestorPorLista = await db.EmailsAutorizadosGestor.AnyAsync(e => e.Email == email!.Value);
+        var squadPadrao = await db.Squads.FirstAsync(s => s.Nome == "Mão de Obra");
         usuario = new Usuario
         {
             Nome = perfilGraph?.DisplayName?.Trim() is { Length: > 0 } nome ? nome : email!.Value,
             Email = email!,
             IsGestor = ehGestorPorConfig || ehGestorPorLista,
+            SquadId = squadPadrao.Id,
         };
         db.Usuarios.Add(usuario);
         await db.SaveChangesAsync();
@@ -1698,7 +1810,7 @@ app.MapPost("/auth/microsoft", async (
     {
         token = tokenBussola,
         expiraEm = expiraEmMicrosoft,
-        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.Squad, usuario.IsGestor, usuario.Foto },
+        usuario = new { usuario.Id, usuario.Nome, Email = usuario.Email.Value, usuario.Cargo, usuario.SquadId, usuario.IsGestor, usuario.Foto },
     });
 })
    .WithName("LoginMicrosoft");
@@ -1789,6 +1901,7 @@ app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, C
 
     var usuario = await db.Usuarios.FindAsync(id);
     if (usuario is null) return Results.NotFound(new { erro = "Usuário não encontrado." });
+    if (!await db.Squads.AnyAsync(s => s.Id == req.SquadId)) return Results.BadRequest(new { erro = "Squad inválido." });
 
     var perfil = req.Perfil;
     usuario.Cargo = perfil.Cargo;
@@ -1797,7 +1910,7 @@ app.MapPut("/users/{id:guid}/perfil", async (Guid id, SalvarPerfilRequest req, C
     usuario.Git = perfil.Git;
     usuario.Sql = perfil.Sql;
     usuario.Jira = perfil.Jira;
-    usuario.Squad = req.Squad;
+    usuario.SquadId = req.SquadId;
     usuario.NivelamentoConcluido = true;
     await db.SaveChangesAsync();
 
@@ -1824,6 +1937,9 @@ app.MapGet("/users/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContex
         var gestor = await db.Usuarios.FindAsync(gestorId);
         gestorNome = gestor?.Nome;
     }
+    // FindAsync não carrega a navegação (sem lazy loading) — busca o nome à parte, mesmo padrão
+    // leve já usado acima pro nome do gestor.
+    var squadNome = await db.Squads.Where(s => s.Id == usuario.SquadId).Select(s => s.Nome).FirstOrDefaultAsync();
 
     return Results.Ok(new
     {
@@ -1831,7 +1947,8 @@ app.MapGet("/users/{id:guid}", async (Guid id, ClaimsPrincipal user, AppDbContex
         usuario.Nome,
         Email = usuario.Email.Value,
         usuario.Cargo,
-        usuario.Squad,
+        usuario.SquadId,
+        Squad = squadNome,
         usuario.IsGestor,
         usuario.Foto,
         usuario.NivelamentoConcluido,
@@ -2306,7 +2423,7 @@ record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
 record TrocarFotoRequest(string? Foto);
 
 // Corpo do salvar-perfil (nivelamento): perfil de skills + squad.
-record SalvarPerfilRequest(Perfil Perfil, Squad Squad);
+record SalvarPerfilRequest(Perfil Perfil, Guid SquadId);
 
 // Corpo do concluir-passo: comprovação opcional (link do PR, print ou nota).
 record ConcluirPassoRequest(string? Evidencia);
@@ -2325,9 +2442,10 @@ record TrailItemView(
     StepDepth RecommendedDepth,
     string Tipo);
 
-// Corpos do CRUD de admin (fases/passos/módulos/fluxos).
+// Corpos do CRUD de admin (fases/passos/módulos/fluxos/squads).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
+record SquadRequest(string Nome, int Order);
 record AcessoRequest(string Nome, string? Link, Cargo CargoMinimo, int Order);
 record MarcarAcessoRequest(bool Concluido);
 record CardLinkRequest(string? Url);
@@ -2345,7 +2463,8 @@ record PassoRequest(
     string VideoUrl);
 record FluxoRequest(
     Guid ModuloId,
-    Squad? Squad,
+    Guid? SquadId,
+    TipoConteudo Tipo,
     string Categoria,
     int Order,
     string Titulo,

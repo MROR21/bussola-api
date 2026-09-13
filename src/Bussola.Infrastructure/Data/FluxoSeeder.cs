@@ -1,5 +1,4 @@
 using Bussola.Domain.Entities;
-using Bussola.Domain.Nivelamento;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bussola.Infrastructure.Data;
@@ -20,10 +19,12 @@ public static class FluxoSeeder
 
     public static async Task SeedAsync(AppDbContext db)
     {
-        // Módulos já foram semeados pela migration (SeedFaseAndModuloData) — aqui só referenciamos
-        // pelo nome, nunca criamos Módulo por conta própria (isso é papel do admin agora).
+        // Módulos e Squads já foram semeados pelas migrations (SeedFaseAndModuloData/
+        // SeedSquadData) — aqui só referenciamos pelo nome, nunca criamos Módulo/Squad por conta
+        // própria (isso é papel do admin agora).
         var moduloPorNome = await db.Modulos.ToDictionaryAsync(m => m.Nome, m => m.Id);
-        var todos = Definicoes(moduloPorNome);
+        var squadPorNome = await db.Squads.ToDictionaryAsync(s => s.Nome, s => s.Id);
+        var todos = Definicoes(moduloPorNome, squadPorNome);
 
         if (!await db.Fluxos.AnyAsync())
         {
@@ -36,9 +37,9 @@ public static class FluxoSeeder
         var alterou = false;
 
         // Fluxos do módulo Mão de Obra sem squad definido → recebem o squad MdO.
-        foreach (var fluxo in existentes.Where(f => f.Modulo.Nome == ModuloMdO && f.Squad == null))
+        foreach (var fluxo in existentes.Where(f => f.Modulo.Nome == ModuloMdO && f.SquadId == null))
         {
-            fluxo.Squad = Squad.MaoDeObra;
+            fluxo.SquadId = squadPorNome[ModuloMdO];
             alterou = true;
         }
 
@@ -103,18 +104,20 @@ public static class FluxoSeeder
         _({MarcadorStub} — aqui entra o passo a passo da tela, com o vídeo do sistema acima.)_
         """;
 
-    private static List<Fluxo> Definicoes(Dictionary<string, Guid> moduloPorNome)
+    private static List<Fluxo> Definicoes(Dictionary<string, Guid> moduloPorNome, Dictionary<string, Guid> squadPorNome)
     {
         // Cada fluxo de sistema tem uma TAG (categoria) = o tópico dentro do módulo. Isso agrupa os
         // fluxos por assunto na tela (Folha, Alocação, Orçamento...), virando um índice do módulo.
-        var sistemas = new (string Modulo, Squad Squad, (string Titulo, string Descricao, string Tag)[] Fluxos)[]
+        // SquadNome é o mesmo texto de ModuloMdO/ModuloQQ/ModuloAgilean de propósito — os 3 módulos
+        // de squad têm nome idêntico ao squad correspondente (ver SeedSquadData).
+        var sistemas = new (string Modulo, string SquadNome, (string Titulo, string Descricao, string Tag)[] Fluxos)[]
         {
             // Conteúdo real, curado a partir das aulas em vídeo do wiki "Agilean na Prática"
             // (2026-09-05) — substitui os stubs mock que existiam antes (só descreviam o que ia
             // ter). Cada módulo abre com uma "Visão geral" (resumo em texto, sem vídeo) — mesma
             // base/estrutura nos 3 (intro + "as três pontas" + ideia central + por onde começar),
             // pedido do Miguel 2026-09-10 pra ficar consistente entre os squads.
-            (ModuloMdO, Squad.MaoDeObra, new (string, string, string)[]
+            (ModuloMdO, ModuloMdO, new (string, string, string)[]
             {
                 ("Visão geral da Mão de Obra", "O que a MdO controla: custos e alocação de equipe na obra.", "Visão geral"),
                 ("Dashboards do Portal: longo prazo", "Dashboards do Portal com visão de longo prazo.", "Portal"),
@@ -125,13 +128,13 @@ public static class FluxoSeeder
                 ("Mão de obra de terceiros", "Gestão da mão de obra de terceiros.", "Mão de obra própria e terceiros"),
                 ("Curto prazo operacional e causas", "Curto prazo operacional e o registro de causas.", "Curto prazo operacional"),
             }),
-            (ModuloQQ, Squad.QuizQuality, new (string, string, string)[]
+            (ModuloQQ, ModuloQQ, new (string, string, string)[]
             {
                 ("Visão geral do Quiz Quality", "O que o QQ controla: inspeções de qualidade e não conformidades na obra.", "Visão geral"),
                 ("Quiz Quality Portal: cadastros e preparação da obra", "Cadastros e preparação da obra no Quiz Quality Portal.", "Portal"),
                 ("Quiz Quality Portal e App: qualidade admin e inspeções", "Qualidade Admin e criação/tramitação de inspeções normais e mapeadas.", "Portal"),
             }),
-            (ModuloAgilean, Squad.Agilean, new (string, string, string)[]
+            (ModuloAgilean, ModuloAgilean, new (string, string, string)[]
             {
                 ("Visão geral do Agilean (desktop)", "O que o Agilean controla: planejamento e acompanhamento da obra.", "Visão geral"),
                 ("Primeiros passos no Agilean", "Criar conta, empresa, projeto e os primeiros cadastros no Agilean Desktop.", "Primeiros passos"),
@@ -145,7 +148,7 @@ public static class FluxoSeeder
         var lista = new List<Fluxo>();
         // Order reinicia em 1 a cada módulo — cada squad enxerga sua própria sequência (1, 2, 3...)
         // em vez de um contador global entre módulos.
-        foreach (var (modulo, squad, fluxos) in sistemas)
+        foreach (var (modulo, squadNome, fluxos) in sistemas)
         {
             var ordem = 1;
             foreach (var (titulo, descricao, tag) in fluxos)
@@ -154,7 +157,7 @@ public static class FluxoSeeder
                 {
                     Order = ordem++,
                     ModuloId = moduloPorNome[modulo],
-                    Squad = squad,
+                    SquadId = squadPorNome[squadNome],
                     Categoria = tag,
                     Titulo = titulo,
                     Descricao = descricao,

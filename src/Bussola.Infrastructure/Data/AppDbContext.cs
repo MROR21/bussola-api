@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FluxoConcluido> FluxosConcluidos => Set<FluxoConcluido>();
     public DbSet<Fase> Fases => Set<Fase>();
     public DbSet<Modulo> Modulos => Set<Modulo>();
+    public DbSet<Squad> Squads => Set<Squad>();
     public DbSet<EmailAutorizadoGestor> EmailsAutorizadosGestor => Set<EmailAutorizadoGestor>();
     public DbSet<Acesso> Acessos => Set<Acesso>();
     public DbSet<AcessoConcluido> AcessosConcluidos => Set<AcessoConcluido>();
@@ -52,6 +53,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(m => m.Nome)
             .IsUnique();
 
+        // Nome de squad é único — mesmo motivo de Fase/Modulo.
+        modelBuilder.Entity<Squad>()
+            .HasIndex(s => s.Nome)
+            .IsUnique();
+
         // E-mail pré-autorizado é único — sem duplicata na lista.
         modelBuilder.Entity<EmailAutorizadoGestor>()
             .HasIndex(e => e.Email)
@@ -88,6 +94,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(f => f.Modulo)
             .WithMany()
             .HasForeignKey(f => f.ModuloId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Mesma trava Restrict pras 3 relações novas de Squad — apagar um squad ainda referenciado
+        // por usuário/fluxo/módulo deve falhar no banco (o endpoint de admin também checa antes,
+        // ver Program.cs, isso aqui é a segunda trava).
+        modelBuilder.Entity<Usuario>()
+            .HasOne(u => u.Squad)
+            .WithMany()
+            .HasForeignKey(u => u.SquadId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Fluxo>()
+            .HasOne(f => f.Squad)
+            .WithMany()
+            .HasForeignKey(f => f.SquadId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Modulo>()
+            .HasOne(m => m.Squad)
+            .WithMany()
+            .HasForeignKey(m => m.SquadId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -21,7 +21,12 @@ public class Usuario
 
     // Perfil persistido (mesmos campos do record Perfil, achatados em colunas).
     public Cargo Cargo { get; set; } = Cargo.Estagiario;
-    public Squad Squad { get; set; } = Squad.MaoDeObra;
+    // Sem valor default fixo aqui de propósito: o squad "padrão" só existe depois que a migration
+    // semeia os squads no banco (Guid não aceita literal como o enum antigo aceitava) — os dois
+    // pontos que criam Usuario (registro por senha e por Microsoft) resolvem explicitamente antes
+    // de atribuir, ver Program.cs.
+    public Guid SquadId { get; set; }
+    public virtual Squad Squad { get; set; } = null!;
     public SkillLevel Frontend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Backend { get; set; } = SkillLevel.Nenhum;
     public SkillLevel Git { get; set; } = SkillLevel.Nenhum;

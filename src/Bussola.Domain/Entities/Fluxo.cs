@@ -1,5 +1,3 @@
-using Bussola.Domain.Nivelamento;
-
 namespace Bussola.Domain.Entities;
 
 // Um fluxo do dia a dia (a "Referência viva"): consultável a qualquer momento, fora da jornada.
@@ -11,7 +9,10 @@ public class Fluxo
     public Guid ModuloId { get; set; }
     public virtual Modulo Modulo { get; set; } = null!;
     // Squad ao qual o fluxo pertence. null = vale pra todos (ex.: "Básico do dev").
-    public Squad? Squad { get; set; }
+    public Guid? SquadId { get; set; }
+    public virtual Squad? Squad { get; set; }
+    // Fluxo (passo a passo) ou Documentação (referência) — duas abas do mesmo módulo/squad.
+    public TipoConteudo Tipo { get; set; } = TipoConteudo.Fluxo;
     public string Categoria { get; set; } = string.Empty;
     public string Titulo { get; set; } = string.Empty;
     public string Descricao { get; set; } = string.Empty;
