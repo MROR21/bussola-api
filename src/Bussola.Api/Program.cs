@@ -1053,6 +1053,26 @@ app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
    .WithName("AdminDeleteModulo")
    .RequireAuthorization("Gestor");
 
+// Muda (ou limpa) o squad de um módulo já existente — endpoint próprio, separado do PUT genérico
+// (que só mexe em nome/ordem, ver ModuloRequest) de propósito: sem isso, vincular um módulo a um
+// squad (no POST /admin/squads, ou aqui numa correção) virava uma via de mão única — não existia
+// nenhum jeito de desfazer pela tela se o admin escolhesse errado.
+app.MapPut("/admin/modulos/{id:guid}/squad", async (Guid id, MudarSquadModuloRequest req, AppDbContext db) =>
+{
+    var modulo = await db.Modulos.FindAsync(id);
+    if (modulo is null) return Results.NotFound(new { erro = "Módulo não encontrado." });
+    if (req.SquadId is Guid sid && !await db.Squads.AnyAsync(s => s.Id == sid))
+    {
+        return Results.BadRequest(new { erro = "Squad inválido." });
+    }
+
+    modulo.SquadId = req.SquadId;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminMudarSquadModulo")
+   .RequireAuthorization("Gestor");
+
 // Lista pública (qualquer usuário autenticado) — usada pelo picker de squad no nivelamento, que
 // roda ANTES da pessoa virar gestor de qualquer coisa (ao contrário de Fase/Módulo, cuja lista só
 // o admin vê, aqui todo mundo precisa enxergar as opções pra se cadastrar).
@@ -2527,6 +2547,7 @@ record ModuloRequest(string Nome, int Order);
 // Só a criação escolhe o squad (categoria) — separado de ModuloRequest de propósito, pra um PUT
 // feito pelo fluxo genérico de editar nome/ordem nunca correr o risco de zerar o SquadId sem querer.
 record CriarModuloRequest(string Nome, Guid? SquadId, int Order);
+record MudarSquadModuloRequest(Guid? SquadId);
 // `ModuloNome` cria um módulo novo; `ModuloId` vincula um módulo "padrão do sistema" já existente
 // (só faz sentido no POST — o PUT continua só editando nome/ordem do vínculo já feito).
 record SquadRequest(string Nome, string? ModuloNome, int Order, Guid? ModuloId = null);
