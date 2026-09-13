@@ -596,7 +596,10 @@ app.MapGet("/gestor/usuarios", async (ClaimsPrincipal user, AppDbContext db) =>
    .WithName("GetGestorUsuarios")
    .RequireAuthorization("Gestor");
 
-// Progresso passo-a-passo de um supervisionado (só do gestor dono dele).
+// Progresso passo-a-passo de QUALQUER usuário (não só supervisionado do caller) — "Ver jornada"
+// permite a qualquer gestor acompanhar quem não é dele (ver GestorNome em GET /gestor/disponiveis).
+// `GestorId` vai na resposta pro front saber se é uma visão "de fora" (esconde aprovar/pedir
+// correção, que continuam só do gestor de fato — ver os dois endpoints logo abaixo).
 app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
 {
     if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
@@ -605,9 +608,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var registros = await db.PassosConcluidos
@@ -676,13 +679,14 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/progresso", async (Guid usuarioId,
 
     if (!inseriuFluxos) AdicionarFluxosDoSquad();
 
-    return Results.Ok(new { alvo.Nome, alvo.Cargo, Passos = passos });
+    return Results.Ok(new { alvo.Nome, alvo.Cargo, alvo.GestorId, Passos = passos });
 })
    .WithName("GetProgressoSupervisionado")
    .RequireAuthorization("Gestor");
 
 // Todos os fluxos do guia com a flag de concluído do supervisionado. `DoSquad` marca os que fazem
-// parte do onboarding dele (os do squad); o resto é consulta livre.
+// parte do onboarding dele (os do squad); o resto é consulta livre. Aberto a qualquer gestor
+// (ver "Ver jornada" no comentário do GET .../progresso acima), não só o dono.
 app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
 {
     if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
@@ -691,9 +695,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var concluidos = (await db.FluxosConcluidos
@@ -717,7 +721,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/fluxos", async (Guid usuarioId, Cl
    .RequireAuthorization("Gestor");
 
 // Acessos a liberar pro supervisionado, conforme o Cargo dele (cumulativo — ver comentário na
-// entidade `Acesso`) + quais já foram marcados concluídos.
+// entidade `Acesso`) + quais já foram marcados concluídos. Aberto a qualquer gestor (ver "Ver
+// jornada" no comentário do GET .../progresso acima).
 app.MapGet("/gestor/usuarios/{usuarioId:guid}/acessos", async (Guid usuarioId, ClaimsPrincipal user, AppDbContext db) =>
 {
     if (!Guid.TryParse(user.FindFirstValue("sub"), out var gestorId))
@@ -726,9 +731,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/acessos", async (Guid usuarioId, C
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var concluidos = (await db.AcessosConcluidos
@@ -751,8 +756,10 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/acessos", async (Guid usuarioId, C
    .WithName("GetAcessosSupervisionado")
    .RequireAuthorization("Gestor");
 
-// Marca (ou desmarca) um Acesso como liberado pro supervisionado — sempre uma ação do gestor DELE,
-// clicando no chip (não existe callback de "voltou do link externo": marca já no clique).
+// Marca (ou desmarca) um Acesso como liberado pro supervisionado — clicando no chip (não existe
+// callback de "voltou do link externo": marca já no clique). Qualquer gestor pode, mesmo "de fora"
+// (ver "Ver jornada" no comentário do GET .../progresso acima) — liberar acesso não é uma decisão
+// de review como aprovar/pedir correção, então não precisa ficar restrito ao gestor de fato.
 app.MapPut("/gestor/usuarios/{usuarioId:guid}/acessos/{acessoId:guid}", async (
     Guid usuarioId, Guid acessoId, MarcarAcessoRequest req, ClaimsPrincipal user, AppDbContext db) =>
 {
@@ -762,9 +769,9 @@ app.MapPut("/gestor/usuarios/{usuarioId:guid}/acessos/{acessoId:guid}", async (
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var existente = await db.AcessosConcluidos
@@ -809,9 +816,9 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/card-link", async (Guid usuarioId,
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var cardLink = await db.CardLinks.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
@@ -822,7 +829,8 @@ app.MapGet("/gestor/usuarios/{usuarioId:guid}/card-link", async (Guid usuarioId,
 
 // Envia (ou reenvia/sobrescreve — 1 registro por pessoa, sem histórico) o link do card pro
 // supervisionado. Notifica ele com um link CLICÁVEL de rota interna (o sino já sabe navegar,
-// nenhuma mudança precisa no front pra esse caso — diferente do link externo do PR).
+// nenhuma mudança precisa no front pra esse caso — diferente do link externo do PR). Qualquer
+// gestor pode enviar, mesmo "de fora" (ver "Ver jornada" no comentário do GET .../progresso acima).
 app.MapPut("/gestor/usuarios/{usuarioId:guid}/card-link", async (
     Guid usuarioId, CardLinkRequest req, ClaimsPrincipal user, AppDbContext db) =>
 {
@@ -838,9 +846,9 @@ app.MapPut("/gestor/usuarios/{usuarioId:guid}/card-link", async (
     }
 
     var alvo = await db.Usuarios.FindAsync(usuarioId);
-    if (alvo is null || alvo.GestorId != gestorId)
+    if (alvo is null)
     {
-        return Results.NotFound(new { erro = "Supervisionado não encontrado." });
+        return Results.NotFound(new { erro = "Usuário não encontrado." });
     }
 
     var existente = await db.CardLinks.FirstOrDefaultAsync(c => c.UsuarioId == usuarioId);
@@ -2366,7 +2374,9 @@ app.MapGet("/users/{id:guid}/progress/{stepId:guid}", async (Guid id, Guid stepI
 
 // Gestor pede correção no PR já enviado como comprovação (os comentários em si ficam no Bitbucket
 // — isso aqui é só o status/aviso). Só o gestor liga esse flag; só o colaborador desliga (endpoint
-// abaixo), depois de corrigir e atualizar a MESMA branch/PR.
+// abaixo), depois de corrigir e atualizar a MESMA branch/PR. DIFERENTE dos endpoints de acesso/
+// card-link acima: essa é uma decisão de review, então continua restrita ao gestor DE FATO
+// (`alvo.GestorId != gestorId`) — "Ver jornada" não libera isso pra qualquer gestor.
 app.MapPut("/gestor/usuarios/{usuarioId:guid}/passos/{stepId:guid}/pedir-correcao", async (
     Guid usuarioId, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
 {
@@ -2460,7 +2470,8 @@ app.MapPut("/users/{id:guid}/progress/{stepId:guid}/corrigido", async (
 
 // Gestor confere a correção que o colaborador marcou e confirma que está tudo certo de verdade —
 // fecha o ciclo (AguardandoConfirmacao = false) e avisa o colaborador. Se não estiver bom, o gestor
-// usa o "pedir correção" de novo em vez desse endpoint.
+// usa o "pedir correção" de novo em vez desse endpoint. Mesma exceção do endpoint acima: fica
+// restrito ao gestor DE FATO, não abre pra "Ver jornada" de qualquer gestor.
 app.MapPut("/gestor/usuarios/{usuarioId:guid}/passos/{stepId:guid}/confirmar", async (
     Guid usuarioId, Guid stepId, ClaimsPrincipal user, AppDbContext db) =>
 {
