@@ -83,6 +83,22 @@ public static class FluxoSeeder
             }
         }
 
+        // Backfill de tipo: fluxos que nasceram como "Fluxo" (o default, antes de Tipo existir)
+        // mas que a definição curada marca como Documentação (ex.: Básico do dev, tudo texto, sem
+        // vídeo) viram Documentação. Só nessa direção — nunca desfaz uma escolha manual que já
+        // tenha virado Documentação → Fluxo (ex.: admin add um vídeo a um desses depois).
+        var tipoPorTitulo = todos.ToDictionary(f => f.Titulo, f => f.Tipo);
+        foreach (var fluxo in existentes)
+        {
+            if (fluxo.Tipo == TipoConteudo.Fluxo
+                && tipoPorTitulo.TryGetValue(fluxo.Titulo, out var tipo)
+                && tipo == TipoConteudo.Documentacao)
+            {
+                fluxo.Tipo = TipoConteudo.Documentacao;
+                alterou = true;
+            }
+        }
+
         // Insere os fluxos que ainda não existem (por título) — ex.: o módulo Mão de Obra.
         var titulos = existentes.Select(f => f.Titulo).ToHashSet();
         var novos = todos.Where(f => !titulos.Contains(f.Titulo)).ToList();
@@ -561,6 +577,9 @@ public static class FluxoSeeder
             fluxo.Order = ordem++;
             fluxo.ModuloId = moduloBasicoId;
             fluxo.VideoUrl = string.Empty;
+            // Básico do dev é referência escrita (arquitetura, PR, rebase...), nunca vídeo — Fluxo
+            // é reservado pra conteúdo em vídeo mostrando o sistema (ver Tipo em Fluxo.cs).
+            fluxo.Tipo = TipoConteudo.Documentacao;
         }
         return basicos;
     }
