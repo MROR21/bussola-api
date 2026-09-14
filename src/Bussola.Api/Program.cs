@@ -1070,11 +1070,19 @@ app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
     }
 
     var modulo = await db.Modulos.FindAsync(id);
-    if (modulo is not null)
+    if (modulo is null) return Results.NoContent();
+
+    // Faltava essa trava: apagar o módulo de um squad deixava o squad sem NENHUM módulo (estado
+    // que a tela de admin nem sabia editar direito — travava ao tentar). Mesmo padrão de segunda
+    // trava usado em todo o resto (Fase/Módulo/Squad): desvincule primeiro (PUT .../squad ou
+    // "Mudar categoria" na edição), depois apague.
+    if (modulo.SquadId is not null)
     {
-        db.Modulos.Remove(modulo);
-        await db.SaveChangesAsync();
+        return Results.BadRequest(new { erro = "Esse módulo pertence a um squad — desvincule antes de apagar." });
     }
+
+    db.Modulos.Remove(modulo);
+    await db.SaveChangesAsync();
     return Results.NoContent();
 })
    .WithName("AdminDeleteModulo")
@@ -1179,25 +1187,59 @@ app.MapPut("/admin/squads/{id:guid}", async (Guid id, SquadRequest req, AppDbCon
     var squad = await db.Squads.FindAsync(id);
     if (squad is null) return Results.NotFound(new { erro = "Squad não encontrado." });
     if (string.IsNullOrWhiteSpace(req.Nome)) return Results.BadRequest(new { erro = "Informe o nome do squad." });
-    if (string.IsNullOrWhiteSpace(req.ModuloNome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
 
     var nome = req.Nome.Trim();
-    var moduloNome = req.ModuloNome.Trim();
     if (await db.Squads.AnyAsync(s => s.Nome == nome && s.Id != id))
     {
         return Results.BadRequest(new { erro = "Já existe um squad com esse nome." });
     }
 
     var modulo = await db.Modulos.FirstOrDefaultAsync(m => m.SquadId == id);
-    if (modulo is not null && modulo.Nome != moduloNome
-        && await db.Modulos.AnyAsync(m => m.Nome == moduloNome && m.Id != modulo.Id))
+    if (modulo is null)
     {
-        return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+        // Squad sem módulo (ex.: o módulo dele foi apagado à parte, antes de DELETE /admin/modulos
+        // travar isso) — mesma escolha de POST /admin/squads: linkar um módulo "padrão do sistema"
+        // já existente, ou criar um novo, pra deixar de editar num squad quebrado.
+        if (req.ModuloId is Guid moduloIdExistente)
+        {
+            var existente = await db.Modulos.FindAsync(moduloIdExistente);
+            if (existente is null) return Results.BadRequest(new { erro = "Módulo não encontrado." });
+            if (existente.SquadId is not null)
+            {
+                return Results.BadRequest(new { erro = "Esse módulo já pertence a outro squad." });
+            }
+            modulo = existente;
+            modulo.SquadId = squad.Id;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(req.ModuloNome))
+            {
+                return Results.BadRequest(new { erro = "Informe o nome do módulo, ou escolha um já existente." });
+            }
+            var moduloNomeNovo = req.ModuloNome.Trim();
+            if (await db.Modulos.AnyAsync(m => m.Nome == moduloNomeNovo))
+            {
+                return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+            }
+            modulo = new Modulo { Nome = moduloNomeNovo, Order = req.Order, SquadId = squad.Id };
+            db.Modulos.Add(modulo);
+        }
+    }
+    else
+    {
+        if (string.IsNullOrWhiteSpace(req.ModuloNome)) return Results.BadRequest(new { erro = "Informe o nome do módulo." });
+        var moduloNome = req.ModuloNome.Trim();
+        if (modulo.Nome != moduloNome
+            && await db.Modulos.AnyAsync(m => m.Nome == moduloNome && m.Id != modulo.Id))
+        {
+            return Results.BadRequest(new { erro = "Já existe um módulo com esse nome." });
+        }
+        modulo.Nome = moduloNome;
     }
 
     squad.Nome = nome;
     squad.Order = req.Order;
-    if (modulo is not null) modulo.Nome = moduloNome;
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
