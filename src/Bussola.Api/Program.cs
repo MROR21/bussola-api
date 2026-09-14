@@ -377,7 +377,7 @@ app.MapGet("/onboarding/steps/{id:guid}", async (Guid id, AppDbContext db) =>
 // aparecia — via GuiasPage.tsx).
 app.MapGet("/modulos", async (AppDbContext db) =>
     await db.Modulos.OrderBy(m => m.Order)
-        .Select(m => new { m.Id, m.Nome, m.Order, m.SquadId })
+        .Select(m => new { m.Id, m.Nome, m.Order, m.SquadId, m.Icone })
         .ToListAsync())
    .WithName("GetModulos")
    .RequireAuthorization();
@@ -1041,6 +1041,7 @@ app.MapPost("/admin/modulos", async (CriarModuloRequest req, AppDbContext db) =>
     }
 
     var modulo = new Modulo { Nome = req.Nome.Trim(), Order = req.Order, SquadId = req.SquadId };
+    if (!string.IsNullOrWhiteSpace(req.Icone)) modulo.Icone = req.Icone.Trim();
     db.Modulos.Add(modulo);
     await db.SaveChangesAsync();
     return Results.Ok(modulo);
@@ -1060,6 +1061,22 @@ app.MapPut("/admin/modulos/{id:guid}", async (Guid id, ModuloRequest req, AppDbC
     return Results.NoContent();
 })
    .WithName("AdminUpdateModulo")
+   .RequireAuthorization("Gestor");
+
+// Muda o ícone de um módulo já existente — endpoint próprio, mesmo padrão do .../squad logo
+// abaixo: o PUT genérico acima só mexe em nome/ordem, nunca em ícone, então o formulário de
+// renomear nunca corre o risco de trocar o ícone sem querer.
+app.MapPut("/admin/modulos/{id:guid}/icone", async (Guid id, MudarIconeModuloRequest req, AppDbContext db) =>
+{
+    var modulo = await db.Modulos.FindAsync(id);
+    if (modulo is null) return Results.NotFound(new { erro = "Módulo não encontrado." });
+    if (string.IsNullOrWhiteSpace(req.Icone)) return Results.BadRequest(new { erro = "Escolha um ícone." });
+
+    modulo.Icone = req.Icone.Trim();
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+   .WithName("AdminMudarIconeModulo")
    .RequireAuthorization("Gestor");
 
 app.MapDelete("/admin/modulos/{id:guid}", async (Guid id, AppDbContext db) =>
@@ -2629,9 +2646,13 @@ record TrailItemView(
 // Corpos do CRUD de admin (fases/passos/módulos/fluxos/squads).
 record FaseRequest(string Nome, int Order);
 record ModuloRequest(string Nome, int Order);
-// Só a criação escolhe o squad (categoria) — separado de ModuloRequest de propósito, pra um PUT
-// feito pelo fluxo genérico de editar nome/ordem nunca correr o risco de zerar o SquadId sem querer.
-record CriarModuloRequest(string Nome, Guid? SquadId, int Order);
+// Só a criação escolhe o squad (categoria) e o ícone — separado de ModuloRequest de propósito, pra
+// um PUT feito pelo fluxo genérico de editar nome/ordem nunca correr o risco de mudar SquadId/Icone
+// sem querer (mudar depois vai pelos endpoints .../squad e .../icone).
+record CriarModuloRequest(string Nome, Guid? SquadId, int Order, string? Icone = null);
+// Sem validação de whitelist no back de propósito — nome de ícone do material-symbols, quem
+// escolhe é sempre o seletor do front (ver moduloIcones.ts), não um campo de texto livre.
+record MudarIconeModuloRequest(string Icone);
 record MudarSquadModuloRequest(Guid? SquadId);
 // `ModuloNome` cria um módulo novo; `ModuloId` vincula um módulo "padrão do sistema" já existente
 // (só faz sentido no POST — o PUT continua só editando nome/ordem do vínculo já feito).

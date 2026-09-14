@@ -13,4 +13,10 @@ public class Modulo
     // novo (ver POST /admin/squads).
     public Guid? SquadId { get; set; }
     public virtual Squad? Squad { get; set; }
+
+    // Nome de um ícone do material-symbols (ex.: "engineering") — escolhido pelo admin na criação
+    // ou edição (ver ModuloIcones.cs no front pra lista curada). Antes era um dicionário fixo por
+    // NOME de módulo no código (GuiasPage.tsx); módulo novo (que não estivesse nesse dicionário)
+    // sempre caía num ícone genérico de quebra-cabeça, sem jeito de corrigir sem alterar código.
+    public string Icone { get; set; } = "inventory_2";
 }
