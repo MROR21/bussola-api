@@ -184,7 +184,359 @@ public static class FluxoSeeder
         }
 
         lista.AddRange(BasicoDoDev(moduloPorNome[ModuloBasico]));
+        lista.AddRange(DocumentacaoSquads(moduloPorNome, squadPorNome));
         return lista;
+    }
+
+    // Documentação real trazida da wiki interna (TI - Fábrica de Software > squad > {planner,
+    // workforce}, 2026-09-19) — só os squads/páginas que já tinham conteúdo preenchido lá
+    // (Quiz Quality ainda não tem nada na wiki). Tipo=Documentacao: é referência escrita, não
+    // "aula" de sistema, então cai na aba Documentação/Guia do módulo do squad, não em Fluxo.
+    // Continua a numeração de Order de cada módulo (Mão de Obra vai até 8, Agilean até 6 acima).
+    private static IEnumerable<Fluxo> DocumentacaoSquads(Dictionary<string, Guid> moduloPorNome, Dictionary<string, Guid> squadPorNome)
+    {
+        var docs = new List<(string Modulo, int Order, string Categoria, string Titulo, string Descricao, string Conteudo)>
+        {
+            (ModuloAgilean, 7, "Git & PR", "Padrão de Commits",
+                "Convenção de commits (Conventional Commits) usada nos projetos.",
+                """
+                ## Padrão de Commits (Conventional Commits)
+                Adotamos o padrão **Conventional Commits**, que ajuda a manter o histórico de
+                alterações mais organizado, facilita automações como geração de changelog e melhora
+                a legibilidade do repositório.
+
+                ## Formato do commit
+                ```
+                <tipo>[escopo]: <mensagem breve em inglês>
+
+                * texto maior se necessário
+                ```
+                Exemplo:
+                ```
+                feat(TASK-123): add endpoint to get packages
+                ```
+
+                ## Tipos de commit aceitos
+                | Tipo | Quando usar |
+                |---|---|
+                | `feat` | Nova funcionalidade |
+                | `fix` | Correção de bugs |
+                | `chore` | Manutenção que não afeta a lógica (configs, scripts) |
+                | `docs` | Alterações em documentação |
+                | `style` | Formatação (indentação, ponto e vírgula) sem mudança lógica |
+                | `refactor` | Refatoração que não altera o comportamento |
+                | `test` | Adição ou modificação de testes |
+                | `perf` | Melhorias de performance |
+                | `build` | Scripts/build/configuração de dependências |
+                | `ci` | Configurações de pipelines de CI/CD |
+
+                ## Escopo (obrigatório)
+                O escopo define onde a mudança aconteceu — task, módulo, pacote, componente etc.
+
+                **Sempre** que houver card relacionado, o escopo é a task. Sem task, use outro
+                escopo (ex.: `refactor(long-term): ...`).
+
+                Se precisar de uma explicação maior, pule uma linha e escreva uma mensagem clara do
+                que foi feito de fato no commit.
+
+                Exemplos:
+                - `feat(TASK-1000): ...`
+                - `fix(BUG-123): ...`
+                - `refactor(long-term): ...`
+
+                ## Exemplo prático
+                ```
+                feat(TASK-1000): add package dates to long term table
+
+                fix(BUG-123): submit button not triggering event
+
+                refactor(long-term): remove scenario value as table dependency
+
+                * To calculate the long-term table, it was necessary to calculate
+                  the scenario values, and this was causing significant slowdowns.
+                  This commit addresses this need and changes it to simply
+                  querying the database, as the necessary data could be
+                  calculated in a simple query, without the need for
+                  distribution calculations.
+                ```
+
+                ## O que evitar
+                - Commits genéricos como `update`, `ajustes`, `wip`, `small changes`, `fixes`.
+                - Commits misturando vários tipos de alteração (ex.: feature + fix + refactor no
+                  mesmo commit).
+                - Mensagens sem contexto: "update screen", "improvements".
+                """),
+            (ModuloAgilean, 8, "Git & PR", "Regras de PR's",
+                "Padrão de título, descrição e aprovação de Pull Requests.",
+                """
+                ## Padrão de Pull Requests (PRs)
+                Pull Requests são essenciais para garantir qualidade de código, rastreabilidade e
+                alinhamento entre o time. Seguir um padrão claro agiliza o processo e reduz
+                retrabalho.
+
+                ## Título do PR
+                O título deve seguir o mesmo padrão dos commits:
+                ```
+                <tipo>(TASK-123): descricao breve do PR
+                ```
+                Use o mesmo tipo e escopo da branch, com um título claro e direto.
+
+                Exemplos:
+                - `feat(TASK-101): create login screen`
+                - `fix(portal): create new employee`
+
+                ## Descrição do PR
+                Use o modelo abaixo sempre que abrir uma PR:
+                ```
+                ## O que foi feito*:
+
+                - Pode replicar o que tiver nos commits, e se não tiver claro o suficiente,
+                comentar melhor.
+
+                ## Screenshots:
+
+                [imagem]
+
+                ## Checklist*
+
+                - [x] Não deixei logs ou console
+                - [x] Rodei os testes automatizados
+                - [x] O código está seguindo os padrões de estilo e lint
+                - [x] Revisei meu código
+
+                ## Observações
+
+                - Qualquer ponto de atenção que fizer sentido pra quem for revisar!
+                ```
+
+                ## Boas práticas
+                - Escreva o PR como se fosse para outra pessoa entender rapidamente.
+                - Use screenshots sempre que houver impacto visual e for útil pro entendimento.
+                - Mencione outros devs ou tasks relacionadas, se necessário (`@dev`,
+                  `Depende de TASK-456`).
+                - Revise seu próprio código antes de pedir revisão.
+
+                ## Regras de aprovação
+                - Preencha as checklists.
+                - Toda PR precisa de **pelo menos 1 aprovação de outro dev** (exceção para PRs com
+                  tipo `style` ou pequenos `fix`).
+                - PRs críticas devem ser revisadas por alguém responsável pelo domínio.
+                - Nunca force push em branch de PR compartilhada sem avisar.
+
+                ## Após o merge
+                - Prefira **fast-forward** para manter um histórico mais limpo.
+                - Apague a branch após o merge, salvo exceções onde ela ainda será usada.
+                """),
+            (ModuloMdO, 9, "Integrações", "Integração de Folha de Produção – Agilean x ERP",
+                "Pré-requisitos, consultas SQL e fluxo operacional da integração Agilean x ERP.",
+                """
+                ## Integração de Folha de Produção – Agilean x ERP
+                Procedimentos, requisitos técnicos e fluxos operacionais necessários para a
+                integração entre a plataforma Agilean e o ERP, com foco na sincronização de dados
+                de mão de obra e apropriação de custos via folha de produção.
+
+                ## 1. Pré-requisitos e configurações obrigatórias (ERP + Agilean)
+                Para garantir o funcionamento correto da comunicação entre os sistemas, os itens
+                abaixo devem estar atendidos antes de iniciar a integração:
+
+                **1.1 Vínculo de orçamento no ERP** — o cliente deve possuir um orçamento
+                previamente criado e vinculado ao projeto no ERP.
+
+                **1.2 Permissões de acesso** — o usuário configurado para a integração deve possuir
+                permissões explícitas no banco do ERP para leitura (consultas), escrita
+                (gravações/apropriações) e exclusão (quando aplicável aos fluxos da integração).
+
+                **1.3 Vínculo de funcionário com insumo** — todo funcionário deve estar vinculado a
+                um insumo no ERP. O Agilean precisa do **Insumo** no momento do envio das
+                apropriações: todo funcionário deve estar vinculado a uma função, e toda função
+                deve estar vinculada a um insumo. Sem essa configuração, o envio de apropriações
+                não é possível.
+
+                **1.4 Configuração de atividade extra** (obrigatória para apropriações fora do
+                planejamento) — para apropriar custos de atividades extras (não previstas no
+                planejamento), é necessário configurar no ERP uma atividade pai que servirá como
+                âncora hierárquica. O código de recebimento de atividades extras deve estar sempre
+                vinculado a essa atividade pai, respeitando o padrão hierárquico de atividades do
+                ERP.
+
+                Na prática: se no ERP já existe a atividade pai `9.99`, o Agilean cria
+                automaticamente uma atividade filha `9.99.99` — usada no Agilean, com todo custo de
+                atividade extra apropriado exclusivamente nela.
+
+                ## 2. Configuração de consultas SQL (ERP)
+                A integração depende de consultas específicas no SQL Server para extrair dados de
+                funcionários e custos.
+
+                ### 2.1 Importação de funcionários e funções
+                Sincroniza o cadastro de pessoal e associa os insumos de mão de obra
+                correspondentes:
+                ```sql
+                DECLARE @PRJ INT
+                DECLARE @COL INT
+
+                SET @COL = :COLIGADA
+                SET @PRJ = :IDPRJ
+
+                SELECT
+                    PFUNC.CODCOLIGADA,
+                    PFUNC.CHAPA,
+                    PPESSOA.CPF,
+                    PFUNC.NOME,
+                    PFUNC.CODFUNCAO,
+                    PFUNCAO.NOME AS FUNCAO,
+                    PFUNC.SALARIO,
+                    PFUNC.DATAADMISSAO,
+                    PFUNC.DATADEMISSAO,
+                    PPESSOA.DTNASCIMENTO,
+                    PFUNC.CODSITUACAO,
+                    PCODSITUACAO.DESCRICAO AS SITUACAO,
+                    MISMFUNC.IDISM,
+                    MISM.CODISM,
+                    MISM.DESCISM AS INSUMO,
+                    CASE WHEN MISM.CODUND IN ('H', 'UN') THEN 1 ELSE 0 END HORISTA
+                FROM PFUNC
+                INNER JOIN PPESSOA ON PFUNC.CODPESSOA = PPESSOA.CODIGO
+                INNER JOIN PFUNCAO ON PFUNC.CODFUNCAO = PFUNCAO.CODIGO
+                    AND PFUNC.CODCOLIGADA = PFUNCAO.CODCOLIGADA
+                INNER JOIN PCODSITUACAO ON PFUNC.CODSITUACAO = PCODSITUACAO.CODCLIENTE
+                LEFT JOIN MISMFUNC ON MISMFUNC.CODFUNCAO = PFUNCAO.CODIGO
+                    AND MISMFUNC.CODCOLIGADA = PFUNCAO.CODCOLIGADA
+                    AND MISMFUNC.IDPRJ = @PRJ
+                LEFT JOIN MISM ON MISM.IDISM = MISMFUNC.IDISM
+                    AND MISM.CODCOLIGADA = MISMFUNC.CODCOLIGADA
+                    AND MISM.IDPRJ = MISMFUNC.IDPRJ
+                WHERE PFUNC.CODCOLIGADA = @COL
+                ```
+
+                ### 2.2 Importação de custos de mão de obra
+                O Agilean consome especificamente o grupo `GRUPODNER = 'B'` → **Mão de Obra**. É
+                essencial que os insumos estejam corretamente classificados no ERP e que exista a
+                curva S do projeto.
+                ```sql
+                SELECT
+                    CURVS.CODCOLIGADA,
+                    CURVS.IDPRJ,
+                    CURVS.IDTRF,
+                    MTAREFA.CODTRF,
+                    MTAREFA.NOME AS TAREFA,
+                    MTAREFA.QUANTIDADE QTD_TAREFA,
+                    MTAREFA.VALOR VLR_TAREFA,
+                    CURVS.IDISM,
+                    MISM.CODISM,
+                    MISM.DESCISM AS INSUMO,
+                    MISM.VALOR VLR_INSUMO,
+                    SUM((CURVS.PERCPLANEJADO / 100) * CURVS.QUANTPLANEJADO) AS QTD_PLANEJADO,
+                    SUM((CURVS.PERCPLANEJADO / 100) * CURVS.VALORTOTAL) AS VLR_PLANEJADO,
+                    CURVS.IDPERIODO,
+                    MPERIODO.DTINICIO AS PERIODO_INICIO,
+                    MPERIODO.DTFIM AS PERIODO_FIM,
+                    MISM.GRUPODNER AS COD_GRUPO,
+                    CASE MISM.GRUPODNER
+                        WHEN 'A' THEN 'EQUIPAMENTO'
+                        WHEN 'B' THEN 'MÃO DE OBRA'
+                        WHEN 'C' THEN 'MATERIAL'
+                        WHEN 'D' THEN 'ATIVIDADES AUXILIARES'
+                        WHEN 'E' THEN 'TEMPO FIXO'
+                        WHEN 'F' THEN 'MOMENTO DE TRANSPORTE'
+                        WHEN 'N' THEN 'NENHUM'
+                    END AS GRUPO
+                FROM MCURVASISM (NOLOCK) CURVS --Tabela de curva S
+                LEFT JOIN MTAREFA (NOLOCK) ON MTAREFA.IDTRF = CURVS.IDTRF
+                    AND MTAREFA.CODCOLIGADA = CURVS.CODCOLIGADA
+                    AND MTAREFA.IDPRJ = CURVS.IDPRJ
+                LEFT JOIN MISM (NOLOCK) ON MISM.IDISM = CURVS.IDISM --tabela de insumos
+                    AND MISM.CODCOLIGADA = CURVS.CODCOLIGADA
+                    AND MISM.IDPRJ = CURVS.IDPRJ
+                LEFT JOIN MPERIODO (NOLOCK) ON MPERIODO.CODCOLIGADA = CURVS.CODCOLIGADA
+                    AND MPERIODO.IDPRJ = CURVS.IDPRJ
+                    AND MPERIODO.IDPERIODO = CURVS.IDPERIODO
+                WHERE CURVS.CODCOLIGADA = :COLIGADA
+                  AND CURVS.IDPRJ = :IDPRJ
+                GROUP BY
+                    CURVS.CODCOLIGADA, CURVS.IDPRJ, CURVS.IDTRF, MTAREFA.QUANTIDADE,
+                    MTAREFA.VALOR, CURVS.IDISM, MISM.VALOR, CURVS.IDPERIODO,
+                    MTAREFA.CODTRF, MISM.CODISM, MISM.GRUPODNER, MTAREFA.NOME,
+                    MISM.DESCISM, MPERIODO.DTINICIO, MPERIODO.DTFIM
+                ORDER BY CURVS.IDPERIODO
+                ```
+
+                ### 2.3 Criação de tarefa (atividades extras)
+                O Agilean precisa criar a tarefa onde serão apropriados os custos extras
+                provenientes de verbas extras cadastradas no sistema. Para isso, é essencial que o
+                ERP disponibilize um endpoint de criação de tarefa com retorno do ID da tarefa
+                criada — usado posteriormente no envio das apropriações. O Agilean envia um objeto
+                assim:
+                ```csharp
+                var mtTarefa = new MtTarefa
+                {
+                    Nome = "Tarefas Extras",
+                    Descricao = "Tarefas Extras Agilean",
+                    Ativa = 1,
+                    CodColigada = companyId,
+                    CodTrf = extraTaskCode,
+                    IdPrj = budget.TotvsProjectId,
+                    IdPrjRec = budget.TotvsProjectId
+                };
+                ```
+
+                ### 2.4 Deleção de apropriações
+                O Agilean precisa conseguir deletar as apropriações do ERP após o envio, permitindo
+                reenvios quando necessário. Requisitos obrigatórios: endpoint de deleção de
+                apropriações e retorno dos IDs das apropriações no momento do envio.
+
+                **Cenário comum:** o cliente aprova a folha, a folha é enviada ao ERP, e
+                posteriormente são identificados ajustes necessários. Nessa situação, o Agilean
+                precisa deletar todas as apropriações enviadas, refazer o envio e garantir
+                consistência entre Agilean e ERP.
+
+                ## 3. Configuração dos endpoints (API ERP)
+                Os endpoints devem seguir o padrão da API Framework do ERP.
+
+                Funcionários:
+                ```
+                api/framework/v1/consultaSQLServer/RealizaConsulta/LABSQL0061/0/P/?parameters=COLIGADA%3D7
+                ```
+                Custos:
+                ```
+                api/framework/v1/consultaSQLServer/RealizaConsulta/CONST0030/0/M/
+                ```
+                No ERP (exemplo TOTVS), a tela "Editar Integração" concentra: sistema ERP, envio
+                automático, senha da ERP, identificador da empresa, endereço de acesso para
+                importar funcionários, endereço de acesso para importar valor de mão de obra, e o
+                código de recebimento para atividades extras (ex.: `9.99.99`).
+
+                ## 4. Tratamento de atividades extras (regra de apropriação)
+                Quando houver atividade extra (fora do previsto), a apropriação deve seguir o
+                modelo hierárquico configurado:
+                - Atividade pai no ERP → `9.99`
+                - Atividade filha criada pelo Agilean → `9.99.99`
+                - Apropriação efetiva → sempre na atividade filha
+
+                Resultado: todos os custos extras ficam centralizados, rastreáveis e controlados
+                dentro do orçamento do ERP.
+
+                ## 5. Fluxo operacional (passo a passo)
+                1. **Preparação** — criar e validar consultas SQL no ERP.
+                2. **Configuração** — preencher parâmetros de integração no portal Agilean.
+                3. **Sincronização inicial** — importar funcionários e funções.
+                4. **Planejamento** — atribuir tarefas aos colaboradores no Agilean.
+                5. **Ciclo da folha** — gerar, validar e aprovar a Folha de Produção.
+                6. **Finalização** — envio automático das apropriações ao ERP após aprovação.
+                """),
+        };
+
+        return docs.Select(d => new Fluxo
+        {
+            Order = d.Order,
+            ModuloId = moduloPorNome[d.Modulo],
+            SquadId = squadPorNome[d.Modulo],
+            Categoria = d.Categoria,
+            Titulo = d.Titulo,
+            Descricao = d.Descricao,
+            Conteudo = d.Conteudo,
+            VideoUrl = string.Empty,
+            Tipo = TipoConteudo.Documentacao,
+        });
     }
 
     // Vídeo (embed) por título de fluxo — o link de "Inserir/Embed" do SharePoint/Stream, não o de
