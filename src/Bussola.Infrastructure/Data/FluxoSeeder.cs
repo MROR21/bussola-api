@@ -188,16 +188,32 @@ public static class FluxoSeeder
         return lista;
     }
 
-    // Documentação real trazida da wiki interna (TI - Fábrica de Software > squad > {planner,
-    // workforce}, 2026-09-19) — só os squads/páginas que já tinham conteúdo preenchido lá
-    // (Quiz Quality ainda não tem nada na wiki). Tipo=Documentacao: é referência escrita, não
-    // "aula" de sistema, então cai na aba Documentação/Guia do módulo do squad, não em Fluxo.
-    // Continua a numeração de Order de cada módulo (Mão de Obra vai até 8, Agilean até 6 acima).
+    // Fallback pros itens do molde de documentação da wiki que ainda não têm página real escrita.
+    private static string StubDocumentacao(string titulo) => $"""
+        ## {titulo}
+        _({MarcadorStub} — aguardando conteúdo real da wiki interna.)_
+        """;
+
+    // Documentação dos squads: conteúdo real trazido da wiki interna (TI - Fábrica de Software >
+    // squad > {planner, workforce, quality}, 2026-09-19) MAIS o molde estrutural que a Home de cada
+    // squad na wiki já lista (Arquitetura e Desenvolvimento da Squad / Processos Específicos /
+    // Observabilidade Local — as 3 categorias que aparecem nas 3 squads) — os itens do molde ainda
+    // sem página escrita na wiki (link "[[em colchete]]", convenção do Wiki.js pra página
+    // inexistente) entram como stub (mesmo texto "a curar" dos Fluxos de sistema), pra já existir a
+    // ESTRUTURA/categoria certa esperando o conteúdo, sem inventar conteúdo que não existe ainda.
+    // "Documentação Técnica" só existe pra Mão de Obra — é a única squad cuja Home lista essa seção.
+    // Tipo=Documentacao: é referência escrita, não "aula" de sistema — cai na aba Documentação/Guia
+    // do módulo do squad, não em Fluxo.
     private static IEnumerable<Fluxo> DocumentacaoSquads(Dictionary<string, Guid> moduloPorNome, Dictionary<string, Guid> squadPorNome)
     {
+        const string CategoriaArquitetura = "Arquitetura e Desenvolvimento da Squad";
+        const string CategoriaProcessos = "Processos Específicos";
+        const string CategoriaObservabilidade = "Observabilidade Local";
+        const string CategoriaDocTecnica = "Documentação Técnica";
+
         var docs = new List<(string Modulo, int Order, string Categoria, string Titulo, string Descricao, string Conteudo)>
         {
-            (ModuloAgilean, 7, "Git & PR", "Padrão de Commits",
+            (ModuloAgilean, 7, CategoriaProcessos, "Padrão de Commits",
                 "Convenção de commits (Conventional Commits) usada nos projetos.",
                 """
                 ## Padrão de Commits (Conventional Commits)
@@ -266,7 +282,7 @@ public static class FluxoSeeder
                   mesmo commit).
                 - Mensagens sem contexto: "update screen", "improvements".
                 """),
-            (ModuloAgilean, 8, "Git & PR", "Regras de PR's",
+            (ModuloAgilean, 8, CategoriaProcessos, "Regras de PR's",
                 "Padrão de título, descrição e aprovação de Pull Requests.",
                 """
                 ## Padrão de Pull Requests (PRs)
@@ -327,7 +343,7 @@ public static class FluxoSeeder
                 - Prefira **fast-forward** para manter um histórico mais limpo.
                 - Apague a branch após o merge, salvo exceções onde ela ainda será usada.
                 """),
-            (ModuloMdO, 9, "Integrações", "Integração de Folha de Produção – Agilean x ERP",
+            (ModuloMdO, 9, CategoriaDocTecnica, "Integração de Folha de Produção – Agilean x ERP",
                 "Pré-requisitos, consultas SQL e fluxo operacional da integração Agilean x ERP.",
                 """
                 ## Integração de Folha de Produção – Agilean x ERP
@@ -524,6 +540,44 @@ public static class FluxoSeeder
                 6. **Finalização** — envio automático das apropriações ao ERP após aprovação.
                 """),
         };
+
+        // Itens do molde (por squad) — TituloBase gera um Titulo único por squad ("{TituloBase}
+        // {Sufixo}"), já que Titulo precisa ser único no dataset inteiro (chave do backfill acima).
+        var itensDoMolde = new (string TituloBase, string Categoria, string DescricaoTemplate)[]
+        {
+            ("Arquitetura Local", CategoriaArquitetura, "Arquitetura local usada pelo squad {0}."),
+            ("Stack", CategoriaArquitetura, "Stack de tecnologias do squad {0}."),
+            ("Padrões Específicos", CategoriaArquitetura, "Padrões de código específicos do squad {0}."),
+            ("Workflow", CategoriaProcessos, "Fluxo de trabalho (workflow) do squad {0}."),
+            ("Regras de PR", CategoriaProcessos, "Regras de Pull Request específicas do squad {0}."),
+            ("Pipelines Customizados", CategoriaProcessos, "Pipelines de CI/CD customizados do squad {0}."),
+            ("Dashboards", CategoriaObservabilidade, "Dashboards de observabilidade do squad {0}."),
+            ("Alertas Específicos", CategoriaObservabilidade, "Alertas específicos monitorados pelo squad {0}."),
+            ("Análises e Post-Mortems", CategoriaObservabilidade, "Análises e post-mortems do squad {0}."),
+        };
+
+        var squadsDoMolde = new (string Modulo, string Sufixo, string NomeExibicao, ISet<string> JaTemConteudoReal)[]
+        {
+            (ModuloMdO, "da Mão de Obra", "Mão de Obra", new HashSet<string>()),
+            (ModuloQQ, "do Quiz Quality", "Quiz Quality", new HashSet<string>()),
+            // "Regras de PR" já tem página real ("Regras de PR's", Order 8 acima) — não duplica com stub.
+            (ModuloAgilean, "do Agilean (desktop)", "Agilean (desktop)", new HashSet<string> { "Regras de PR" }),
+        };
+
+        foreach (var (modulo, sufixo, nomeExibicao, jaTemConteudoReal) in squadsDoMolde)
+        {
+            var ordemBase = docs.Where(d => d.Modulo == modulo).Select(d => d.Order).DefaultIfEmpty(0).Max();
+            foreach (var (tituloBase, categoria, descricaoTemplate) in itensDoMolde)
+            {
+                if (jaTemConteudoReal.Contains(tituloBase))
+                    continue;
+
+                var titulo = $"{tituloBase} {sufixo}";
+                docs.Add((modulo, ++ordemBase, categoria, titulo,
+                    string.Format(descricaoTemplate, nomeExibicao),
+                    StubDocumentacao(titulo)));
+            }
+        }
 
         return docs.Select(d => new Fluxo
         {
